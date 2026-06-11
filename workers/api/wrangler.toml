@@ -1,0 +1,16 @@
+name = "personalityos-api"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+LLM_PROVIDER = "openrouter"
+
+# Secrets (set via `wrangler secret put` in production — stored in .dev.vars locally):
+# SUPABASE_URL
+# SUPABASE_ANON_KEY
+# SUPABASE_SERVICE_KEY
+# OPENROUTER_API_KEY
+# ANTHROPIC_API_KEY
+# MUAPI_API_KEY
+# POSTHOG_API_KEY
