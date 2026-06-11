@@ -105,10 +105,7 @@ export default function CreateCharacterPage() {
     try {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.replace('/login')
-        return
-      }
+      if (!session) { router.replace('/login'); return }
 
       const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL ?? 'http://localhost:8787'
       const res = await fetch(`${workerUrl}/api/characters`, {
@@ -128,10 +125,7 @@ export default function CreateCharacterPage() {
       })
 
       const json = await res.json() as { data?: unknown; error?: string }
-      if (!res.ok) {
-        setError(json.error ?? 'Failed to create character.')
-        return
-      }
+      if (!res.ok) { setError(json.error ?? 'Failed to create character.'); return }
 
       router.push('/dashboard')
     } catch {
@@ -167,20 +161,15 @@ export default function CreateCharacterPage() {
 
       <main className="mx-auto max-w-2xl px-4 py-10">
         <div className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight text-white">
-            Create a Character
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">Create a Character</h1>
           <p className="mt-1 text-sm text-[#a1a1aa]">
             Define your AI character's identity. This becomes the DNA for all content generation.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
-          {/* Section 1: Name */}
           <section>
-            <label className="mb-2 block text-sm font-medium text-white">
-              Character Name
-            </label>
+            <label className="mb-2 block text-sm font-medium text-white">Character Name</label>
             <input
               type="text"
               value={form.name}
@@ -190,11 +179,8 @@ export default function CreateCharacterPage() {
             />
           </section>
 
-          {/* Section 2: Domain */}
           <section>
-            <label className="mb-2 block text-sm font-medium text-white">
-              Domain / Expertise
-            </label>
+            <label className="mb-2 block text-sm font-medium text-white">Domain / Expertise</label>
             <input
               type="text"
               value={form.domain}
@@ -220,7 +206,6 @@ export default function CreateCharacterPage() {
             </div>
           </section>
 
-          {/* Section 3: Gender */}
           <section>
             <p className="mb-3 text-sm font-medium text-white">Gender</p>
             <div className="grid grid-cols-3 gap-3">
@@ -235,7 +220,6 @@ export default function CreateCharacterPage() {
             </div>
           </section>
 
-          {/* Section 4: Age Range */}
           <section>
             <p className="mb-3 text-sm font-medium text-white">Age Range</p>
             <div className="grid grid-cols-3 gap-3">
@@ -250,7 +234,6 @@ export default function CreateCharacterPage() {
             </div>
           </section>
 
-          {/* Section 5: Nationality */}
           <section>
             <p className="mb-3 text-sm font-medium text-white">Nationality</p>
             <div className="grid grid-cols-2 gap-3">
@@ -276,7 +259,6 @@ export default function CreateCharacterPage() {
             )}
           </section>
 
-          {/* Section 6: Style Preset */}
           <section>
             <p className="mb-3 text-sm font-medium text-white">Communication Style</p>
             <div className="space-y-3">

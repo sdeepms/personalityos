@@ -7,6 +7,10 @@ compatibility_flags = ["nodejs_compat"]
 LLM_PROVIDER = "openrouter"
 ALLOWED_ORIGIN = "http://localhost:3000"
 
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "personalityos-storage"
+
 # Secrets (set via `wrangler secret put` in production — stored in .dev.vars locally):
 # SUPABASE_URL
 # SUPABASE_ANON_KEY
@@ -15,4 +19,4 @@ ALLOWED_ORIGIN = "http://localhost:3000"
 # ANTHROPIC_API_KEY
 # MUAPI_API_KEY
 # POSTHOG_API_KEY
-# ALLOWED_ORIGIN (override with production Pages URL, e.g. "https://personalityos.pages.dev")
+# ALLOWED_ORIGIN (override with production Pages URL, e.g. "https://personalityos.pages.dev,http://localhost:3000")

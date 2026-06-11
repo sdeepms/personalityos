@@ -7,48 +7,119 @@ import type { User } from '@supabase/supabase-js'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/browser'
 
+type ReferenceImage = {
+  url: string
+  pose_type: string
+  is_primary: boolean
+}
+
 type Character = {
   id: string
   name: string
   domain: string
   style_preset: string
   dna_ready: number
+  reference_images_ready: number
+  reference_image_urls: string
   created_at: string
+}
+
+const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL ?? 'http://localhost:8787'
+
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
 }
 
 function CharacterCardSkeleton() {
   return (
-    <div className="rounded-xl border border-[#262626] bg-[#141414] p-5 animate-pulse">
-      <div className="h-4 w-1/2 rounded bg-[#262626]" />
-      <div className="mt-2 h-3 w-3/4 rounded bg-[#262626]" />
-      <div className="mt-4 h-8 w-24 rounded-lg bg-[#262626]" />
+    <div className="rounded-xl border border-[#262626] bg-[#141414] overflow-hidden animate-pulse">
+      <div className="h-36 bg-[#1f1f1f]" />
+      <div className="p-4 space-y-2">
+        <div className="h-4 w-1/2 rounded bg-[#262626]" />
+        <div className="h-3 w-3/4 rounded bg-[#262626]" />
+        <div className="mt-3 h-8 w-24 rounded-lg bg-[#262626]" />
+      </div>
     </div>
   )
 }
 
 function CharacterCard({ character }: { character: Character }) {
   const router = useRouter()
+
+  let primaryImageUrl: string | null = null
+  if (character.reference_images_ready === 1 && character.reference_image_urls) {
+    try {
+      const refs: ReferenceImage[] = JSON.parse(character.reference_image_urls)
+      const primary = refs.find((r) => r.is_primary) ?? refs[0]
+      if (primary?.url) {
+        primaryImageUrl = `${WORKER_URL}/files/${primary.url}`
+      }
+    } catch {
+      primaryImageUrl = null
+    }
+  }
+
   return (
-    <div className="rounded-xl border border-[#262626] bg-[#141414] p-5 transition-colors hover:border-[#404040]">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate text-base font-semibold text-white">{character.name}</h3>
-          <p className="mt-0.5 truncate text-sm text-[#a1a1aa]">{character.domain}</p>
-        </div>
-        {character.dna_ready === 1 && (
-          <span className="shrink-0 rounded-full bg-indigo-500/10 px-2 py-0.5 text-xs font-medium text-indigo-400">
-            Ready
-          </span>
+    <div className="rounded-xl border border-[#262626] bg-[#141414] overflow-hidden transition-colors hover:border-[#404040]">
+      {/* Thumbnail */}
+      <div className="relative h-36 bg-[#1a1a1a] flex items-center justify-center overflow-hidden">
+        {primaryImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={primaryImageUrl}
+            alt={`${character.name} reference`}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-indigo-900/30 to-purple-900/20">
+            <span className="text-3xl font-bold text-indigo-400/60 select-none">
+              {getInitials(character.name)}
+            </span>
+          </div>
+        )}
+        {character.reference_images_ready === 1 && (
+          <div className="absolute top-2 right-2 rounded-full bg-green-500/20 border border-green-500/30 px-2 py-0.5">
+            <span className="text-xs text-green-400 font-medium">Photos added</span>
+          </div>
         )}
       </div>
-      <div className="mt-4">
-        <Button
-          size="sm"
-          onClick={() => router.push(`/dashboard/${character.id}/chat`)}
-          className="bg-indigo-600 text-white hover:bg-indigo-500"
-        >
-          Open Chat
-        </Button>
+
+      {/* Body */}
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="truncate text-base font-semibold text-white">{character.name}</h3>
+            <p className="mt-0.5 truncate text-sm text-[#a1a1aa]">{character.domain}</p>
+          </div>
+          {character.dna_ready === 1 && (
+            <span className="shrink-0 rounded-full bg-indigo-500/10 px-2 py-0.5 text-xs font-medium text-indigo-400">
+              Ready
+            </span>
+          )}
+        </div>
+
+        <div className="mt-3 flex gap-2">
+          <Button
+            size="sm"
+            onClick={() => router.push(`/dashboard/${character.id}/chat`)}
+            className="bg-indigo-600 text-white hover:bg-indigo-500"
+          >
+            Open Chat
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => router.push(`/dashboard/settings?id=${character.id}`)}
+            className="border-[#262626] text-[#a1a1aa] hover:text-white hover:border-[#404040]"
+          >
+            {character.reference_images_ready !== 1 ? 'Add Photos' : 'Settings'}
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -65,21 +136,14 @@ export default function DashboardPage() {
     const supabase = createClient()
 
     supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) {
-        router.replace('/login')
-        return
-      }
+      if (!user) { router.replace('/login'); return }
       setUser(user)
 
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.replace('/login')
-        return
-      }
+      if (!session) { router.replace('/login'); return }
 
       try {
-        const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL ?? 'http://localhost:8787'
-        const res = await fetch(`${workerUrl}/api/characters`, {
+        const res = await fetch(`${WORKER_URL}/api/characters`, {
           headers: { Authorization: `Bearer ${session.access_token}` },
         })
         const json = await res.json() as { data?: Character[]; error?: string }
