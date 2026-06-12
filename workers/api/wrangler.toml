@@ -6,6 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 LLM_PROVIDER = "openrouter"
 ALLOWED_ORIGIN = "http://localhost:3000"
+WORKER_URL = "http://localhost:8787"
 
 [[r2_buckets]]
 binding = "STORAGE"
@@ -19,4 +20,5 @@ bucket_name = "personalityos-storage"
 # ANTHROPIC_API_KEY
 # MUAPI_API_KEY
 # POSTHOG_API_KEY
-# ALLOWED_ORIGIN (override with production Pages URL, e.g. "https://personalityos.pages.dev,http://localhost:3000")
+# ALLOWED_ORIGIN (production: "https://personalityos.pages.dev,http://localhost:3000")
+# WORKER_URL (production: "https://personalityos-api.your-subdomain.workers.dev")

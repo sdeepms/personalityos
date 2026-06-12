@@ -3,7 +3,7 @@ import { cors } from 'hono/cors'
 import { authMiddleware } from './middleware/auth'
 import { characters } from './routes/characters'
 import { chat } from './routes/chat'
-import { generate } from './routes/generate'
+import { generate, generateTest } from './routes/generate'
 import { library } from './routes/library'
 
 export type Env = {
@@ -18,11 +18,12 @@ export type Env = {
   // Vars — set in wrangler.toml [vars]
   LLM_PROVIDER: string
   ALLOWED_ORIGIN: string
+  WORKER_URL: string
   // R2 binding
   STORAGE: R2Bucket
 }
 
-type Variables = {
+export type Variables = {
   userId: string
   userEmail: string
 }
@@ -64,6 +65,9 @@ app.get('/files/*', async (c) => {
 
   return new Response(obj.body, { headers })
 })
+
+// REMOVE BEFORE PRODUCTION — test endpoint registered before auth middleware
+app.route('/api/generate', generateTest)
 
 // All /api/* routes require a valid Supabase JWT
 app.use('/api/*', authMiddleware)
