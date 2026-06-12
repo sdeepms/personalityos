@@ -79,25 +79,28 @@ export class MuAPIAdapter implements GenerationProvider {
     const { width, height } = resolveDimensions(options.aspectRatio)
 
     // Step 1 — resolve reference image to a MuAPI-accessible CDN URL
-    const rawRefs = options.referenceImageUrls ?? []
-    const referenceImageUrl = rawRefs.length > 0
-      ? await this.uploadReferenceToMuAPI(rawRefs[0])
+    const referenceImageUrl = options.referenceImageUrl
+      ? await this.uploadReferenceToMuAPI(options.referenceImageUrl)
       : undefined
 
-    // Step 2 — submit generation job to model-specific endpoint
-    const generateRes = await fetch(`${MUAPI_HOST}${model.endpoint}`, {
+    // Step 2 — submit generation job
+    // With reference image: flux-2-dev-edit uses images_list for face consistency
+    // Without reference image: flux-dev-image for plain text-to-image
+    const submitEndpoint = referenceImageUrl
+      ? `${MUAPI_HOST}/api/v1/flux-2-dev-edit`
+      : `${MUAPI_HOST}${model.endpoint}`
+
+    const submitBody = referenceImageUrl
+      ? { prompt, images_list: [referenceImageUrl], width, height }
+      : { prompt, width, height, num_images: 1 }
+
+    const generateRes = await fetch(submitEndpoint, {
       method: 'POST',
       headers: {
         'x-api-key': this.apiKey,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        prompt,
-        width,
-        height,
-        num_images: 1,
-        ...(referenceImageUrl ? { reference_image: referenceImageUrl } : {}),
-      }),
+      body: JSON.stringify(submitBody),
     })
 
     if (!generateRes.ok) {

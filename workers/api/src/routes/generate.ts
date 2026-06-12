@@ -2,6 +2,8 @@ import { Hono } from 'hono'
 import { createClient } from '@supabase/supabase-js'
 import type { Env, Variables } from '../index'
 import { getImageProvider } from '../providers/factory'
+import { assembleImagePrompt } from '../services/prompt-builder'
+import type { CharacterForPrompt } from '../services/prompt-builder'
 
 export const generate = new Hono<{ Bindings: Env; Variables: Variables }>()
 
@@ -12,23 +14,10 @@ export const generate = new Hono<{ Bindings: Env; Variables: Variables }>()
 // ─────────────────────────────────────────────────────────────────────────────
 export const generateTest = new Hono<{ Bindings: Env }>()
 
-type ReferenceImage = { url: string; pose_type: string; is_primary: boolean }
-
-type PromptDNA = {
-  style_modifiers?: string[]
-  negative_prompt?: string
-  color_palette?: string
-  aspect_preferences?: Record<string, string>
-  provider_overrides?: { muapi?: { model?: string; steps?: number } }
-}
-
-type Character = {
+type Character = CharacterForPrompt & {
   id: string
   user_id: string
   name: string
-  visual_style_prompt: string
-  prompt_dna: string
-  reference_image_urls: string
   reference_images_ready: number
 }
 
@@ -68,7 +57,7 @@ generate.post('/image', async (c) => {
     return c.json({ error: 'Character not found', code: 'CHARACTER_NOT_FOUND' }, 404)
   }
 
-  // 4. Require reference images
+  // 3. Require reference images
   if (character.reference_images_ready !== 1) {
     return c.json(
       { error: 'Upload a reference photo first', code: 'REFERENCE_IMAGES_REQUIRED' },
@@ -76,44 +65,17 @@ generate.post('/image', async (c) => {
     )
   }
 
-  // 5. Parse prompt_dna
-  let promptDna: PromptDNA = {}
-  try {
-    promptDna = JSON.parse(character.prompt_dna)
-  } catch {
-    return c.json({ error: 'Character has invalid prompt DNA', code: 'INTERNAL_ERROR' }, 500)
-  }
+  // 4. Assemble prompt from character DNA
+  const assembled = assembleImagePrompt(character, image_description, platform)
 
-  // 6. Parse reference images, get primary URL
-  let refs: ReferenceImage[] = []
-  try {
-    refs = JSON.parse(character.reference_image_urls)
-  } catch {
-    refs = []
-  }
-  const primaryRef = refs.find((r) => r.is_primary) ?? refs[0]
-  const primaryRefUrl = primaryRef?.url ?? null
-
-  // 7. Assemble full image prompt
-  const promptParts = [
-    image_description,
-    character.visual_style_prompt,
-    ...(promptDna.style_modifiers ?? []),
-    promptDna.color_palette ?? '',
-  ].filter(Boolean)
-  const assembledPrompt = promptParts.join(', ')
-
-  // 8. Call provider adapter
-  const aspectRatio = promptDna.aspect_preferences?.[platform] ?? '1:1'
-  const modelOverride = promptDna.provider_overrides?.muapi?.model
-
+  // 5. Call provider adapter
   let result
   try {
-    result = await getImageProvider(c.env).generateImage(assembledPrompt, {
-      referenceImageUrls: primaryRefUrl ? [primaryRefUrl] : [],
-      aspectRatio,
-      negativePrompt: promptDna.negative_prompt,
-      model: modelOverride,
+    result = await getImageProvider(c.env).generateImage(assembled.prompt, {
+      referenceImageUrl: assembled.reference_image_url ?? undefined,
+      aspectRatio: assembled.aspect_ratio,
+      negativePrompt: assembled.negative_prompt,
+      model: assembled.model,
       userId,
       characterId: character_id,
     })
@@ -122,7 +84,7 @@ generate.post('/image', async (c) => {
     return c.json({ error: message, code: 'GENERATION_FAILED' }, 500)
   }
 
-  // 9. Insert generation record
+  // 6. Insert generation record
   const { data: generation, error: insertError } = await db(c.env)
     .from('generations')
     .insert({
@@ -142,15 +104,10 @@ generate.post('/image', async (c) => {
 
   if (insertError) {
     // Generation succeeded — return the URL even if DB write fails
-    return c.json({
-      data: { image_url: result.outputUrl, generation_id: null },
-    })
+    return c.json({ data: { image_url: result.outputUrl, generation_id: null } })
   }
 
-  // 10. Return result
-  return c.json({
-    data: { image_url: result.outputUrl, generation_id: generation.id },
-  }, 201)
+  return c.json({ data: { image_url: result.outputUrl, generation_id: generation.id } }, 201)
 })
 
 // GET /api/generate/image/:id
@@ -208,39 +165,15 @@ generateTest.post('/test-image', async (c) => {
     )
   }
 
-  let promptDna: PromptDNA = {}
-  try {
-    promptDna = JSON.parse(character.prompt_dna)
-  } catch {
-    return c.json({ error: 'Character has invalid prompt DNA', code: 'INTERNAL_ERROR' }, 500)
-  }
-
-  let refs: ReferenceImage[] = []
-  try {
-    refs = JSON.parse(character.reference_image_urls)
-  } catch {
-    refs = []
-  }
-  const primaryRef = refs.find((r) => r.is_primary) ?? refs[0]
-  const primaryRefUrl = primaryRef?.url ?? null
-
-  const assembledPrompt = [
-    image_description,
-    character.visual_style_prompt,
-    ...(promptDna.style_modifiers ?? []),
-    promptDna.color_palette ?? '',
-  ].filter(Boolean).join(', ')
-
-  const aspectRatio = promptDna.aspect_preferences?.[platform] ?? '1:1'
-  const modelOverride = promptDna.provider_overrides?.muapi?.model
+  const assembled = assembleImagePrompt(character, image_description, platform)
 
   let result
   try {
-    result = await getImageProvider(c.env).generateImage(assembledPrompt, {
-      referenceImageUrls: primaryRefUrl ? [primaryRefUrl] : [],
-      aspectRatio,
-      negativePrompt: promptDna.negative_prompt,
-      model: modelOverride,
+    result = await getImageProvider(c.env).generateImage(assembled.prompt, {
+      referenceImageUrl: assembled.reference_image_url ?? undefined,
+      aspectRatio: assembled.aspect_ratio,
+      negativePrompt: assembled.negative_prompt,
+      model: assembled.model,
       userId: user_id,
       characterId: character_id,
     })

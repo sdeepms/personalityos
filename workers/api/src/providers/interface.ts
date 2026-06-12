@@ -4,7 +4,7 @@ export interface GenerationProvider {
 }
 
 export interface ImageOptions {
-  referenceImageUrls?: string[]
+  referenceImageUrl?: string
   aspectRatio: string
   negativePrompt?: string
   model?: string

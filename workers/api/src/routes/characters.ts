@@ -41,7 +41,8 @@ characters.post('/', async (c) => {
     return c.json({ error: 'name and domain are required', code: 'BAD_REQUEST' }, 400)
   }
 
-  const visual_style_prompt = [nationality, gender, age_range, domain, 'professional, natural lighting']
+  const skinTone = nationality?.toLowerCase() === 'indian' ? 'warm brown skin tone' : null
+  const visual_style_prompt = [nationality, gender, age_range, skinTone, domain, 'professional, natural lighting']
     .filter(Boolean).join(', ')
 
   const system_prompt = [
@@ -54,7 +55,7 @@ characters.post('/', async (c) => {
 
   const prompt_dna = {
     style_modifiers: ['professional portrait photography', 'cinematic lighting', 'sharp focus', 'high detail'],
-    negative_prompt: 'cartoon, anime, blurry, low quality, deformed, extra limbs, watermark, text overlay',
+    negative_prompt: 'cartoon, anime, blurry, low quality, deformed, extra limbs, extra fingers, six fingers, seven fingers, wrong number of fingers, wrong fingers, mutated hands, malformed hands, watermark, text overlay, ugly, bad anatomy, text on whiteboard, writing on whiteboard, writing on board, words on board, letters on board, illegible text, garbled text, garbled writing, words, letters, skin color mismatch',
     color_palette: 'warm professional tones, natural lighting',
     aspect_preferences: { instagram: '1:1', linkedin: '4:5', x: '16:9', story: '9:16', reel: '9:16', carousel: '1:1' },
     provider_overrides: { muapi: { model: 'flux-dev', steps: 28 } },
