@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { authMiddleware } from './middleware/auth'
 import { characters } from './routes/characters'
-import { chat } from './routes/chat'
+import { chat, chatTest } from './routes/chat'
 import { generate, generateTest } from './routes/generate'
 import { library } from './routes/library'
 
@@ -48,8 +48,9 @@ app.get('/health', (c) => {
   return c.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-// REMOVE BEFORE PRODUCTION — test endpoint registered before auth middleware
+// REMOVE BEFORE PRODUCTION — test endpoints registered before auth middleware
 app.route('/api/generate', generateTest)
+app.route('/api/chat', chatTest)
 
 // All /api/* routes require a valid Supabase JWT
 app.use('/api/*', authMiddleware)
