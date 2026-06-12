@@ -1,4 +1,3 @@
-import { nanoid } from 'nanoid'
 import type { GenerationProvider, ImageOptions, GenerationResult } from '../interface'
 import { getModelById, getDefaultModel } from '../models'
 
@@ -142,22 +141,8 @@ export class MuAPIAdapter implements GenerationProvider {
 
     if (!imageUrl) throw new Error('MuAPI generation timed out after 90 seconds')
 
-    // Step 4 — download from MuAPI CDN and re-upload to our R2 (CDN URLs expire)
-    const imageRes = await fetch(imageUrl, { headers: { 'x-api-key': this.apiKey } })
-    if (!imageRes.ok) throw new Error(`Failed to download generated image (${imageRes.status})`)
-    const imageBuffer = await imageRes.arrayBuffer()
-
-    const folder = options.userId && options.characterId
-      ? `generations/${options.userId}/${options.characterId}`
-      : 'generations/unknown'
-    const r2Key = `${folder}/${nanoid()}.png`
-
-    await this.r2Bucket.put(r2Key, imageBuffer, {
-      httpMetadata: { contentType: 'image/png' },
-    })
-
     return {
-      outputUrl: r2Key,
+      outputUrl: imageUrl,
       provider: 'muapi',
       model: model.id,
       durationMs: Date.now() - startMs,
