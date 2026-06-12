@@ -135,12 +135,11 @@ export default function DashboardPage() {
   useEffect(() => {
     const supabase = createClient()
 
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) { router.replace('/login'); return }
-      setUser(user)
-
+    async function init() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
+
+      setUser(session.user)
 
       try {
         const res = await fetch(`${WORKER_URL}/api/characters`, {
@@ -157,7 +156,9 @@ export default function DashboardPage() {
       } finally {
         setLoading(false)
       }
-    })
+    }
+
+    init()
   }, [router])
 
   async function handleSignOut() {

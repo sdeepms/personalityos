@@ -55,7 +55,7 @@ characters.post('/', async (c) => {
 
   const prompt_dna = {
     style_modifiers: ['professional portrait photography', 'cinematic lighting', 'sharp focus', 'high detail'],
-    negative_prompt: 'cartoon, anime, blurry, low quality, deformed, extra limbs, extra fingers, six fingers, seven fingers, wrong number of fingers, wrong fingers, mutated hands, malformed hands, watermark, text overlay, ugly, bad anatomy, text on whiteboard, writing on whiteboard, writing on board, words on board, letters on board, illegible text, garbled text, garbled writing, words, letters, skin color mismatch',
+    negative_prompt: 'cartoon, anime, illustration, painting, blurry, low quality, low resolution, deformed, ugly, bad anatomy, extra limbs, extra fingers, six fingers, seven fingers, fused fingers, fingers merged into objects, fingers through objects, wrong number of fingers, mutated hands, malformed hands, floating limbs, disconnected limbs, different person, different face, different hairstyle, different clothing style, changed outfit, different outfit, suit when reference shows kurta, formal wear when reference shows casual, casual wear when reference shows formal, text on whiteboard, illegible text, garbled writing, words on board, watermark, signature, logo, nsfw, nudity, violence, overexposed, underexposed, grainy, noisy, artifacts, bad proportions, unrealistic proportions, skin color mismatch, different ethnicity than reference',
     color_palette: 'warm professional tones, natural lighting',
     aspect_preferences: { instagram: '1:1', linkedin: '4:5', x: '16:9', story: '9:16', reel: '9:16', carousel: '1:1' },
     provider_overrides: { muapi: { model: 'flux-dev', steps: 28 } },
