@@ -1,9 +1,8 @@
-import { nanoid } from 'nanoid'
 import type { GenerationProvider, ImageOptions, GenerationResult } from '../interface'
 import { getModelById, getDefaultModel } from '../models'
 
 const MUAPI_HOST = 'https://api.muapi.ai'
-const MUAPI_STATUS_URL = `${MUAPI_HOST}/api/v1/status`
+const MUAPI_POLL_BASE = `${MUAPI_HOST}/api/v1/predictions`
 const POLL_INTERVAL_MS = 3000
 const MAX_ATTEMPTS = 30 // 90 seconds max
 
@@ -22,8 +21,8 @@ function resolveDimensions(aspectRatio: string): AspectDimensions {
 type MuAPIUploadResponse = { url: string }
 type MuAPIGenerateResponse = { request_id: string }
 type MuAPIStatusResponse = {
-  status: 'pending' | 'processing' | 'completed' | 'failed'
-  result?: { url: string }
+  status: 'processing' | 'completed' | 'failed'
+  outputs?: string[]
   error?: string
 }
 
@@ -94,9 +93,9 @@ export class MuAPIAdapter implements GenerationProvider {
       },
       body: JSON.stringify({
         prompt,
-        negative_prompt: options.negativePrompt ?? '',
         width,
         height,
+        num_images: 1,
         ...(referenceImageUrl ? { reference_image: referenceImageUrl } : {}),
       }),
     })
@@ -116,7 +115,7 @@ export class MuAPIAdapter implements GenerationProvider {
     while (attempts < MAX_ATTEMPTS) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
 
-      const statusRes = await fetch(`${MUAPI_STATUS_URL}/${request_id}`, {
+      const statusRes = await fetch(`${MUAPI_POLL_BASE}/${request_id}/result`, {
         headers: { 'x-api-key': this.apiKey },
       })
 
@@ -128,8 +127,8 @@ export class MuAPIAdapter implements GenerationProvider {
       const status = await statusRes.json() as MuAPIStatusResponse
 
       if (status.status === 'completed') {
-        if (!status.result?.url) throw new Error('MuAPI completed but returned no image URL')
-        imageUrl = status.result.url
+        if (!status.outputs?.[0]) throw new Error('MuAPI completed but returned no image URL')
+        imageUrl = status.outputs[0]
         break
       }
 
@@ -142,22 +141,8 @@ export class MuAPIAdapter implements GenerationProvider {
 
     if (!imageUrl) throw new Error('MuAPI generation timed out after 90 seconds')
 
-    // Step 4 — download from MuAPI CDN and re-upload to our R2 (CDN URLs expire)
-    const imageRes = await fetch(imageUrl)
-    if (!imageRes.ok) throw new Error(`Failed to download generated image (${imageRes.status})`)
-    const imageBuffer = await imageRes.arrayBuffer()
-
-    const folder = options.userId && options.characterId
-      ? `generations/${options.userId}/${options.characterId}`
-      : 'generations/unknown'
-    const r2Key = `${folder}/${nanoid()}.png`
-
-    await this.r2Bucket.put(r2Key, imageBuffer, {
-      httpMetadata: { contentType: 'image/png' },
-    })
-
     return {
-      outputUrl: r2Key,
+      outputUrl: imageUrl,
       provider: 'muapi',
       model: model.id,
       durationMs: Date.now() - startMs,
