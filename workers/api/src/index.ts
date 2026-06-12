@@ -1,8 +1,13 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { authMiddleware } from './middleware/auth'
+import { characters } from './routes/characters'
+import { chat } from './routes/chat'
+import { generate, generateTest } from './routes/generate'
+import { library } from './routes/library'
 
 export type Env = {
-  // Secrets (from .dev.vars locally, wrangler secret put in production)
+  // Secrets — set via `wrangler secret put` in production, `.dev.vars` locally
   SUPABASE_URL: string
   SUPABASE_ANON_KEY: string
   SUPABASE_SERVICE_KEY: string
@@ -10,27 +15,66 @@ export type Env = {
   ANTHROPIC_API_KEY: string
   MUAPI_API_KEY: string
   POSTHOG_API_KEY: string
-  // Vars (from wrangler.toml [vars])
+  // Vars — set in wrangler.toml [vars]
   LLM_PROVIDER: string
+  ALLOWED_ORIGIN: string
+  WORKER_URL: string
+  // R2 binding
+  STORAGE: R2Bucket
 }
 
-const app = new Hono<{ Bindings: Env }>()
+export type Variables = {
+  userId: string
+  userEmail: string
+}
 
-app.use('*', cors())
+const app = new Hono<{ Bindings: Env; Variables: Variables }>()
 
+// CORS — allow only listed origins
+app.use('*', (c, next) => {
+  const origins = (c.env.ALLOWED_ORIGIN ?? 'http://localhost:3000')
+    .split(',')
+    .map((s) => s.trim())
+  return cors({
+    origin: (origin) => (origins.includes(origin) ? origin : null),
+    credentials: true,
+    allowHeaders: ['Content-Type', 'Authorization'],
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  })(c, next)
+})
+
+// Public health check
 app.get('/health', (c) => {
   return c.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-// Route modules — wired up as each day's work is completed:
-// import { characters } from './routes/characters'
-// import { chat }       from './routes/chat'
-// import { generate }   from './routes/generate'
-// import { library }    from './routes/library'
-//
-// app.route('/api/characters', characters)
-// app.route('/api/chat',       chat)
-// app.route('/api/generate',   generate)
-// app.route('/api/library',    library)
+// Serve R2 objects at /files/* — no auth required.
+// Paths contain userId/characterId UUIDs which are unguessable without prior knowledge.
+app.get('/files/*', async (c) => {
+  const key = c.req.path.replace(/^\/files\//, '')
+  if (!key) return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404)
+
+  const obj = await c.env.STORAGE.get(key)
+  if (!obj) return c.json({ error: 'File not found', code: 'NOT_FOUND' }, 404)
+
+  const headers = new Headers()
+  if (obj.httpMetadata?.contentType) {
+    headers.set('Content-Type', obj.httpMetadata.contentType)
+  }
+  headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+
+  return new Response(obj.body, { headers })
+})
+
+// REMOVE BEFORE PRODUCTION — test endpoint registered before auth middleware
+app.route('/api/generate', generateTest)
+
+// All /api/* routes require a valid Supabase JWT
+app.use('/api/*', authMiddleware)
+
+app.route('/api/characters', characters)
+app.route('/api/chat', chat)
+app.route('/api/generate', generate)
+app.route('/api/library', library)
 
 export default app
