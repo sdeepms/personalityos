@@ -11,7 +11,7 @@ export const MODELS: Model[] = [
   {
     id: 'flux-dev',
     name: 'Flux Dev',
-    endpoint: '/api/v1/flux-dev',
+    endpoint: '/api/v1/flux-dev-image',
     defaultSteps: 28,
     defaultWidth: 1024,
     defaultHeight: 1024,
@@ -19,7 +19,7 @@ export const MODELS: Model[] = [
   {
     id: 'flux-schnell',
     name: 'Flux Schnell',
-    endpoint: '/api/v1/flux-schnell',
+    endpoint: '/api/v1/flux-schnell-image',
     defaultSteps: 4,
     defaultWidth: 1024,
     defaultHeight: 1024,

@@ -48,24 +48,6 @@ app.get('/health', (c) => {
   return c.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-// Serve R2 objects at /files/* — no auth required.
-// Paths contain userId/characterId UUIDs which are unguessable without prior knowledge.
-app.get('/files/*', async (c) => {
-  const key = c.req.path.replace(/^\/files\//, '')
-  if (!key) return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404)
-
-  const obj = await c.env.STORAGE.get(key)
-  if (!obj) return c.json({ error: 'File not found', code: 'NOT_FOUND' }, 404)
-
-  const headers = new Headers()
-  if (obj.httpMetadata?.contentType) {
-    headers.set('Content-Type', obj.httpMetadata.contentType)
-  }
-  headers.set('Cache-Control', 'public, max-age=31536000, immutable')
-
-  return new Response(obj.body, { headers })
-})
-
 // REMOVE BEFORE PRODUCTION — test endpoint registered before auth middleware
 app.route('/api/generate', generateTest)
 
