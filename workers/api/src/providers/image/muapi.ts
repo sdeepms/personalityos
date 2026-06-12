@@ -3,8 +3,8 @@ import { getModelById, getDefaultModel } from '../models'
 
 const MUAPI_HOST = 'https://api.muapi.ai'
 const MUAPI_POLL_BASE = `${MUAPI_HOST}/api/v1/predictions`
-const POLL_INTERVAL_MS = 3000
-const MAX_ATTEMPTS = 30 // 90 seconds max
+const POLL_INTERVAL_MS = 4000
+const MAX_ATTEMPTS = 60 // 240 seconds max
 
 type AspectDimensions = { width: number; height: number }
 
@@ -77,11 +77,16 @@ export class MuAPIAdapter implements GenerationProvider {
 
     const model = (options.model ? getModelById(options.model) : undefined) ?? getDefaultModel()
     const { width, height } = resolveDimensions(options.aspectRatio)
+    console.log('[muapi] generateImage start — model:', model.id, 'aspect:', options.aspectRatio, `${width}x${height}`)
+    console.log('[muapi] referenceImageUrl:', options.referenceImageUrl ?? 'none')
 
     // Step 1 — resolve reference image to a MuAPI-accessible CDN URL
-    const referenceImageUrl = options.referenceImageUrl
-      ? await this.uploadReferenceToMuAPI(options.referenceImageUrl)
-      : undefined
+    let referenceImageUrl: string | undefined
+    if (options.referenceImageUrl) {
+      console.log('[muapi] uploading reference image to MuAPI CDN...')
+      referenceImageUrl = await this.uploadReferenceToMuAPI(options.referenceImageUrl)
+      console.log('[muapi] reference uploaded, cdnUrl:', referenceImageUrl)
+    }
 
     // Step 2 — submit generation job
     // With reference image: flux-2-dev-edit uses images_list for face consistency
@@ -94,6 +99,7 @@ export class MuAPIAdapter implements GenerationProvider {
       ? { prompt, images_list: [referenceImageUrl], width, height }
       : { prompt, width, height, num_images: 1 }
 
+    console.log('[muapi] submitting to:', submitEndpoint)
     const generateRes = await fetch(submitEndpoint, {
       method: 'POST',
       headers: {
@@ -105,11 +111,13 @@ export class MuAPIAdapter implements GenerationProvider {
 
     if (!generateRes.ok) {
       const text = await generateRes.text()
+      console.error('[muapi] generate request failed:', generateRes.status, text)
       throw new Error(`MuAPI generate request failed (${generateRes.status}): ${text}`)
     }
 
     const { request_id } = await generateRes.json() as MuAPIGenerateResponse
     if (!request_id) throw new Error('MuAPI did not return a request_id')
+    console.log('[muapi] job submitted, request_id:', request_id)
 
     // Step 3 — poll for completion
     let attempts = 0
@@ -142,7 +150,7 @@ export class MuAPIAdapter implements GenerationProvider {
       attempts++
     }
 
-    if (!imageUrl) throw new Error('MuAPI generation timed out after 90 seconds')
+    if (!imageUrl) throw new Error('MuAPI generation timed out after 240 seconds')
 
     return {
       outputUrl: imageUrl,

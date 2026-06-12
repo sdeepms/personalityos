@@ -15,6 +15,7 @@ type Character = {
   id: string
   name: string
   domain: string
+  dna_ready: number
   reference_images_ready: number
   reference_image_urls: string
 }
@@ -53,9 +54,12 @@ type ActiveGeneration = {
   imageUrl: string | null
   imageLoading: boolean
   imageFailed: boolean
+  noReferenceImage: boolean
   generationId: string | null
   status: 'thinking' | 'caption_ready' | 'done' | 'error'
   createdAt?: string
+  captionTimeS: string | null
+  imageTimeS: string | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -78,11 +82,11 @@ const PLATFORM_BADGE: Record<string, string> = {
 }
 
 const PLATFORM_SHORTCUT: Record<string, string> = {
-  instagram: 'border-pink-800   text-pink-400   hover:bg-pink-950/40',
-  linkedin:  'border-blue-800   text-blue-400   hover:bg-blue-950/40',
-  x:         'border-zinc-600   text-zinc-300   hover:bg-zinc-800/40',
-  carousel:  'border-orange-800 text-orange-400 hover:bg-orange-950/40',
-  story:     'border-green-800  text-green-400  hover:bg-green-950/40',
+  instagram: 'border-pink-800   text-pink-400   hover:bg-pink-950/40   disabled:opacity-40',
+  linkedin:  'border-blue-800   text-blue-400   hover:bg-blue-950/40   disabled:opacity-40',
+  x:         'border-zinc-600   text-zinc-300   hover:bg-zinc-800/40   disabled:opacity-40',
+  carousel:  'border-orange-800 text-orange-400 hover:bg-orange-950/40 disabled:opacity-40',
+  story:     'border-green-800  text-green-400  hover:bg-green-950/40  disabled:opacity-40',
 }
 
 const ASPECT_LABEL: Record<string, string> = {
@@ -132,7 +136,6 @@ function getDateLabel(dateStr: string): string {
   const todayMs   = new Date(now.getFullYear(),  now.getMonth(),  now.getDate()).getTime()
   const itemMs    = new Date(d.getFullYear(),     d.getMonth(),    d.getDate()).getTime()
   const diffDays  = Math.round((todayMs - itemMs) / 86_400_000)
-
   if (diffDays === 0) return 'Today'
   if (diffDays === 1) return 'Yesterday'
   if (diffDays < 7)   return d.toLocaleDateString('en-US', { weekday: 'long' })
@@ -140,28 +143,20 @@ function getDateLabel(dateStr: string): string {
 }
 
 /**
- * Pairs text + image generation rows into combined cards.
- * Primary match: same correlation_id (set for all new generations).
- * Fallback match for legacy rows (correlation_id null): same platform +
- * user_prompt within 120 s.
- * Unpaired rows appear as solo cards.
- * Input order doesn't matter — result is sorted oldest→newest.
+ * Pairs text + image rows into combined cards.
+ * Primary: same correlation_id. Fallback: platform + ≤120s (legacy rows).
  */
 function pairHistoryItems(items: HistoryItem[]): ActiveGeneration[] {
   const textGens  = items.filter(i => i.generation_type === 'text')
   const imageGens = items.filter(i => i.generation_type === 'image')
   const pairedImageIds = new Set<string>()
-
   const result: ActiveGeneration[] = []
 
   for (const t of textGens) {
-    // Primary: match by correlation_id
     let match = t.correlation_id
       ? imageGens.find(img => !pairedImageIds.has(img.id) && img.correlation_id === t.correlation_id)
       : undefined
 
-    // Fallback for legacy rows (both sides null): same platform + ≤120 s
-    // (character_id is already the same for all items in this library fetch)
     if (!match && t.correlation_id === null) {
       match = imageGens.find(
         img =>
@@ -186,13 +181,15 @@ function pairHistoryItems(items: HistoryItem[]): ActiveGeneration[] {
       imageUrl:         match?.image_url ?? null,
       imageLoading:     false,
       imageFailed:      false,
+      noReferenceImage: false,
       generationId:     t.id,
       status:           'done',
       createdAt:        t.created_at,
+      captionTimeS:     null,
+      imageTimeS:       null,
     })
   }
 
-  // Unpaired image gens
   for (const img of imageGens) {
     if (pairedImageIds.has(img.id)) continue
     result.push({
@@ -205,9 +202,12 @@ function pairHistoryItems(items: HistoryItem[]): ActiveGeneration[] {
       imageUrl:         img.image_url ?? null,
       imageLoading:     false,
       imageFailed:      false,
+      noReferenceImage: false,
       generationId:     img.id,
       status:           'done',
       createdAt:        img.created_at,
+      captionTimeS:     null,
+      imageTimeS:       null,
     })
   }
 
@@ -248,6 +248,31 @@ function ImageSkeleton({ platform }: { platform: string }) {
   )
 }
 
+function HistoryCardSkeleton() {
+  return (
+    <div className="rounded-xl border border-[#1a1a1a] bg-[#0d0d0d] overflow-hidden animate-pulse">
+      <div className="flex flex-col sm:flex-row">
+        <div className="flex-[2] p-4 border-b border-[#1a1a1a] sm:border-b-0 sm:border-r">
+          <div className="aspect-square w-full rounded-lg bg-[#1a1a1a]" />
+        </div>
+        <div className="flex-[3] p-4 flex flex-col gap-3">
+          <div className="h-5 w-24 rounded-full bg-[#1a1a1a]" />
+          <div className="space-y-2 flex-1">
+            <div className="h-3 w-full rounded bg-[#1a1a1a]" />
+            <div className="h-3 w-5/6 rounded bg-[#1a1a1a]" />
+            <div className="h-3 w-4/6 rounded bg-[#1a1a1a]" />
+            <div className="h-3 w-3/4 rounded bg-[#1a1a1a]" />
+          </div>
+          <div className="flex justify-end gap-1.5">
+            <div className="h-7 w-7 rounded-full bg-[#1a1a1a]" />
+            <div className="h-7 w-7 rounded-full bg-[#1a1a1a]" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function GenerationCard({
   gen,
   mode,
@@ -256,7 +281,9 @@ function GenerationCard({
   token,
   sending,
   onUpdate,
+  onSendingChange,
   onImageClick,
+  onRetry,
 }: {
   gen: ActiveGeneration
   mode: 'history' | 'live'
@@ -265,7 +292,9 @@ function GenerationCard({
   token: string | null
   sending: boolean
   onUpdate: (patch: Partial<ActiveGeneration>) => void
+  onSendingChange: (v: boolean) => void
   onImageClick?: (image: LightboxImage) => void
+  onRetry?: () => void
 }) {
   const [copied,              setCopied]              = useState(false)
   const [linkCopied,          setLinkCopied]          = useState(false)
@@ -293,22 +322,14 @@ function GenerationCard({
       a.download = `${characterName}-${gen.platform}-${gen.localId.slice(0, 8)}.png`
       a.click()
       URL.revokeObjectURL(url)
-    } catch {
-      window.open(gen.imageUrl, '_blank')
-    }
+    } catch { window.open(gen.imageUrl, '_blank') }
   }
 
-  // FIX 3: Web Share API with clipboard fallback
   async function shareImage() {
     if (!gen.imageUrl) return
     if (navigator.share) {
-      try {
-        await navigator.share({
-          title: 'Created with PersonalityOS',
-          text: gen.caption || '',
-          url: gen.imageUrl,
-        })
-      } catch { /* user cancelled */ }
+      try { await navigator.share({ title: 'Created with PersonalityOS', text: gen.caption || '', url: gen.imageUrl }) }
+      catch { /* user cancelled */ }
     } else {
       try {
         await navigator.clipboard.writeText(gen.imageUrl)
@@ -321,40 +342,60 @@ function GenerationCard({
   async function regenerateCaption() {
     if (anyBusy || !token) return
     setCaptionRegenerating(true)
+    const start = Date.now()
     try {
       const res  = await fetch(`${WORKER_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ character_id: characterId, message: gen.message, platform: gen.platform }),
       })
+      if (res.status === 401) { window.location.href = '/login'; return }
       const json = await res.json() as { data?: { caption: string; hashtags: string[] }; error?: string }
       if (!res.ok) throw new Error(json.error)
-      onUpdate({ caption: json.data!.caption, hashtags: json.data!.hashtags ?? [] })
+      const captionTimeS = ((Date.now() - start) / 1000).toFixed(1)
+      onUpdate({ caption: json.data!.caption, hashtags: json.data!.hashtags ?? [], captionTimeS })
     } catch { /* silent */ }
     finally { setCaptionRegenerating(false) }
   }
 
+  // Synchronous regenerate: POST blocks until image is ready (~20-30s)
   async function regenerateImage() {
     if (anyBusy || !token) return
     setImageRegenerating(true)
-    onUpdate({ imageLoading: true, imageUrl: null, imageFailed: false })
+    onSendingChange(true)
+    onUpdate({ imageLoading: true, imageUrl: null, imageFailed: false, noReferenceImage: false, imageTimeS: null })
+    const start = Date.now()
+
     try {
-      const res  = await fetch(`${WORKER_URL}/api/generate/image`, {
+      const res = await fetch(`${WORKER_URL}/api/generate/image`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          character_id: characterId,
+          character_id:      characterId,
           image_description: gen.imageDescription || gen.caption,
-          user_prompt: gen.message,
-          platform: gen.platform,
+          user_prompt:       gen.message,
+          platform:          gen.platform,
         }),
       })
-      const json = await res.json() as { data?: { image_url: string }; error?: string }
-      if (!res.ok) throw new Error(json.error)
-      onUpdate({ imageUrl: json.data!.image_url, imageLoading: false })
+
+      if (res.status === 401) { window.location.href = '/login'; return }
+
+      const json = await res.json() as { data?: { image_url: string; generation_id: string | null }; error?: string; code?: string }
+
+      if (res.status === 400 && json.code === 'REFERENCE_IMAGES_REQUIRED') {
+        onUpdate({ imageLoading: false, noReferenceImage: true })
+        return
+      }
+      if (!res.ok) throw new Error(json.error ?? 'Generation failed')
+
+      const imageTimeS = ((Date.now() - start) / 1000).toFixed(1)
+      onUpdate({ imageUrl: json.data!.image_url, imageLoading: false, imageTimeS })
     } catch {
       onUpdate({ imageLoading: false, imageFailed: true })
-    } finally { setImageRegenerating(false) }
+    } finally {
+      setImageRegenerating(false)
+      onSendingChange(false)
+    }
   }
 
   // ── Live-mode status guards ────────────────────────────────────────────────
@@ -365,10 +406,19 @@ function GenerationCard({
       </div>
     )
   }
+
   if (mode === 'live' && gen.status === 'error') {
     return (
-      <div className="rounded-xl border border-red-900/50 bg-red-950/10 p-4">
-        <p className="text-sm text-red-400">Something went wrong. Try again.</p>
+      <div className="rounded-xl border border-red-900/50 bg-red-950/10 p-4 flex items-center justify-between gap-4">
+        <p className="text-sm text-red-400">Something went wrong.</p>
+        {onRetry && (
+          <button
+            onClick={onRetry}
+            className="shrink-0 rounded-lg border border-red-800/50 bg-red-950/30 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-900/30 hover:text-red-300"
+          >
+            Retry
+          </button>
+        )}
       </div>
     )
   }
@@ -393,9 +443,13 @@ function GenerationCard({
             })}
           />
         </div>
-        {/* FIX 4: aspect | Share | Regenerate | Download */}
         <div className="flex items-center justify-between">
-          <span className="text-xs text-[#71717a]">{ASPECT_LABEL[gen.platform] ?? '1:1'}</span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-[#71717a]">{ASPECT_LABEL[gen.platform] ?? '1:1'}</span>
+            {gen.imageTimeS && (
+              <span className="text-[10px] text-[#3a3a3a]">Generated in {gen.imageTimeS}s</span>
+            )}
+          </div>
           <div className="flex items-center gap-1.5">
             <IconBtn onClick={shareImage} title={linkCopied ? 'Link copied!' : 'Share'}>
               {linkCopied
@@ -427,6 +481,18 @@ function GenerationCard({
       </div>
     )
 
+    if (gen.noReferenceImage) return (
+      <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-yellow-900/40 bg-yellow-950/10 p-6 text-center">
+        <p className="text-xs text-yellow-400/80">Add a reference photo to generate images.</p>
+        <Link
+          href={`/dashboard/settings?id=${characterId}`}
+          className="rounded-lg border border-yellow-800/50 px-3 py-1.5 text-xs text-yellow-400 transition-colors hover:bg-yellow-950/40"
+        >
+          Add Photo
+        </Link>
+      </div>
+    )
+
     if (mode === 'history') return (
       <div className="flex items-center justify-center rounded-lg border border-dashed border-[#1e1e1e] p-8">
         <p className="text-xs text-[#3a3a3a]">Image not available</p>
@@ -436,7 +502,7 @@ function GenerationCard({
     return null
   })()
 
-  const showImagePanel = mode === 'history' || gen.imageLoading || !!gen.imageUrl || gen.imageFailed
+  const showImagePanel = mode === 'history' || gen.imageLoading || !!gen.imageUrl || gen.imageFailed || gen.noReferenceImage
 
   return (
     <div className="rounded-xl border border-[#262626] bg-[#141414] overflow-hidden">
@@ -450,7 +516,6 @@ function GenerationCard({
         )}
 
         {/* RIGHT — caption (60%) */}
-        {/* FIX 2: buttons moved to bottom-right footer, header shows only PlatformBadge */}
         <div className="flex-[3] flex flex-col p-4">
           <div className="mb-3">
             <PlatformBadge platform={gen.platform} />
@@ -469,20 +534,25 @@ function GenerationCard({
               ))}
             </div>
           )}
-          {/* FIX 2: caption action buttons at bottom right */}
-          <div className="mt-3 flex justify-end gap-1.5">
-            <IconBtn onClick={copyCaption} title={copied ? 'Copied!' : 'Copy caption'}>
-              {copied
-                ? <span className="text-[10px] font-medium text-green-400">✓</span>
-                : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                  </svg>
-              }
-            </IconBtn>
-            <IconBtn onClick={regenerateCaption} disabled={anyBusy} title="Regenerate caption" spinning={captionRegenerating}>
-              <RefreshCw size={13} />
-            </IconBtn>
+          <div className="mt-3 flex items-center justify-between">
+            {gen.captionTimeS
+              ? <span className="text-[10px] text-[#3a3a3a]">Generated in {gen.captionTimeS}s</span>
+              : <span />
+            }
+            <div className="flex gap-1.5">
+              <IconBtn onClick={copyCaption} title={copied ? 'Copied!' : 'Copy caption'}>
+                {copied
+                  ? <span className="text-[10px] font-medium text-green-400">✓</span>
+                  : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2"/>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                }
+              </IconBtn>
+              <IconBtn onClick={regenerateCaption} disabled={anyBusy} title="Regenerate caption" spinning={captionRegenerating}>
+                <RefreshCw size={13} />
+              </IconBtn>
+            </div>
           </div>
         </div>
 
@@ -509,15 +579,13 @@ function ImageLightbox({
   const current = images[index]
   const total   = images.length
 
-  // Fade-in on mount
   useEffect(() => { requestAnimationFrame(() => setVisible(true)) }, [])
 
-  // Keyboard navigation + close
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape')      { onClose(); return }
-      if (e.key === 'ArrowLeft')   setIndex(i => Math.max(0, i - 1))
-      if (e.key === 'ArrowRight')  setIndex(i => Math.min(total - 1, i + 1))
+      if (e.key === 'Escape')     { onClose(); return }
+      if (e.key === 'ArrowLeft')  setIndex(i => Math.max(0, i - 1))
+      if (e.key === 'ArrowRight') setIndex(i => Math.min(total - 1, i + 1))
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -556,13 +624,11 @@ function ImageLightbox({
       className={`fixed inset-0 z-50 flex items-center justify-center bg-black/70 transition-opacity duration-200 ${visible ? 'opacity-100' : 'opacity-0'}`}
       onClick={onClose}
     >
-      {/* Portrait panel: 40vw wide, 85vh tall, min 380px */}
       <div
         className="relative flex flex-col rounded-2xl border border-[#262626] bg-[#141414] shadow-[0_32px_64px_rgba(0,0,0,0.8)] overflow-hidden"
         style={{ width: 'clamp(380px, 40vw, 100vw)', height: '85vh' }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Top bar */}
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#262626] px-4">
           <PlatformBadge platform={current.platform} />
           <span className="text-xs text-[#71717a]">{index + 1} of {total}</span>
@@ -574,7 +640,6 @@ function ImageLightbox({
           </button>
         </div>
 
-        {/* Image area — fills all remaining height */}
         <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-[#0a0a0a]">
           {total > 1 && (
             <button
@@ -585,15 +650,8 @@ function ImageLightbox({
               <ChevronLeft size={20} />
             </button>
           )}
-
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            key={current.url}
-            src={current.url}
-            alt="Preview"
-            className="h-full w-full object-contain"
-          />
-
+          <img key={current.url} src={current.url} alt="Preview" className="h-full w-full object-contain" />
           {total > 1 && (
             <button
               onClick={() => setIndex(i => Math.min(total - 1, i + 1))}
@@ -605,7 +663,6 @@ function ImageLightbox({
           )}
         </div>
 
-        {/* Bottom bar */}
         <div className="flex h-12 shrink-0 items-center justify-between border-t border-[#262626] px-4">
           <div className="flex flex-col gap-0.5">
             <span className="text-xs text-[#71717a]">{ASPECT_LABEL[current.platform] ?? '1:1'}</span>
@@ -646,6 +703,8 @@ export default function ChatClient() {
   const [character,       setCharacter]     = useState<Character | null>(null)
   const [charLoading,     setCharLoading]   = useState(true)
   const [historyGens,     setHistoryGens]   = useState<ActiveGeneration[]>([])
+  const [historyLoading,  setHistoryLoading]= useState(true)
+  const [generationCount, setGenerationCount] = useState(0)
   const [generations,     setGenerations]   = useState<ActiveGeneration[]>([])
   const [input,           setInput]         = useState('')
   const [activePlatform,  setActivePlatform]= useState<string | null>(null)
@@ -677,39 +736,56 @@ export default function ChatClient() {
     const supabase = createClient()
 
     async function init() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.replace('/login'); return }
-
+      // Auth check first — getSession() reads from localStorage, no network needed
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
+      if (!session) {
+        router.push('/login')
+        return
+      }
 
       setToken(session.access_token)
 
       try {
-        const [charRes, histRes] = await Promise.all([
+        const [charRes, histRes, countRes] = await Promise.all([
           fetch(`${WORKER_URL}/api/characters/${characterId}`, {
             headers: { Authorization: `Bearer ${session.access_token}` },
           }),
           fetch(`${WORKER_URL}/api/library?character_id=${characterId}&limit=40`, {
             headers: { Authorization: `Bearer ${session.access_token}` },
           }),
+          fetch(`${WORKER_URL}/api/library?character_id=${characterId}&type=text&limit=1`, {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          }),
         ])
+
+        if (charRes.status === 401 || histRes.status === 401) {
+          router.push('/login')
+          return
+        }
 
         if (!charRes.ok) { router.replace('/dashboard'); return }
 
         const charJson = await charRes.json() as { data: Character }
-        setCharacter(charJson.data)
+        const char = charJson.data
 
-        if (histRes.status === 401) { router.replace('/login'); return }
+        if (char.dna_ready === 0) { router.replace('/dashboard'); return }
+
+        setCharacter(char)
+
         if (histRes.ok) {
           const histJson = await histRes.json() as { data?: HistoryItem[] }
-          const items = histJson.data ?? []
-          setHistoryGens(pairHistoryItems(items))
+          setHistoryGens(pairHistoryItems(histJson.data ?? []))
+        }
+
+        if (countRes.ok) {
+          const countJson = await countRes.json() as { meta?: { total: number } }
+          setGenerationCount(countJson.meta?.total ?? 0)
         }
       } catch (err) {
-        console.log('[ChatClient] init error:', err)
+        console.error('[ChatClient] init fetch error:', err)
       } finally {
         setCharLoading(false)
+        setHistoryLoading(false)
       }
     }
 
@@ -717,6 +793,7 @@ export default function ChatClient() {
   }, [characterId, router])
 
   function selectPlatform(platformId: string) {
+    if (sending) return
     setActivePlatform(platformId)
     const cfg    = PLATFORMS.find(p => p.id === platformId)
     const prefix = cfg?.prefix ?? `Create a ${platformId} post about: `
@@ -729,37 +806,84 @@ export default function ChatClient() {
     }, 0)
   }
 
-  async function handleSend() {
-    if (!input.trim() || sending || !character) return
+  // Synchronous image generation: awaits POST directly (~20-30s), then updates state
+  async function startImageGeneration(
+    localId: string,
+    charId: string,
+    imageDescription: string,
+    message: string,
+    platform: string,
+    correlationId: string,
+    authToken: string,
+  ) {
+    const start = Date.now()
+    try {
+      const res = await fetch(`${WORKER_URL}/api/generate/image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({
+          character_id:      charId,
+          image_description: imageDescription,
+          user_prompt:       message,
+          platform,
+          correlation_id:    correlationId,
+        }),
+      })
 
-    // Always get a fresh session — handles token expiry between sends
+      if (res.status === 401) { router.replace('/login'); return }
+
+      const json = await res.json() as { data?: { image_url: string; generation_id: string | null }; error?: string; code?: string }
+
+      if (res.status === 400 && json.code === 'REFERENCE_IMAGES_REQUIRED') {
+        setGenerations(prev => prev.map(g =>
+          g.localId === localId
+            ? { ...g, imageLoading: false, noReferenceImage: true, status: 'done' }
+            : g
+        ))
+        return
+      }
+
+      if (!res.ok) throw new Error(json.error ?? 'Image request failed')
+
+      const imageTimeS = ((Date.now() - start) / 1000).toFixed(1)
+      setGenerations(prev => prev.map(g =>
+        g.localId === localId
+          ? { ...g, imageUrl: json.data!.image_url, imageLoading: false, status: 'done', imageTimeS }
+          : g
+      ))
+      setGenerationCount(prev => prev + 1)
+      setTimeout(() => textareaRef.current?.focus(), 150)
+
+    } catch {
+      setGenerations(prev => prev.map(g =>
+        g.localId === localId ? { ...g, imageLoading: false, imageFailed: true, status: 'done' } : g
+      ))
+    }
+  }
+
+  // Core generation logic — shared by handleSend and retry
+  async function executeGeneration(message: string, platform: string, localId: string) {
     const supabase = createClient()
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.replace('/login'); return }
     const freshToken = session.access_token
     setToken(freshToken)
 
-    const platform       = activePlatform ?? 'general'
-    const message        = input.trim()
-    const correlationId  = crypto.randomUUID()
-    setInput('')
     setSending(true)
 
-    // Use correlationId as the React key — keeps card stable as image arrives
-    const localId = correlationId
+    // Reset card to thinking state (handles both new card and retry)
+    setGenerations(prev => prev.map(g =>
+      g.localId === localId
+        ? { ...g, status: 'thinking', caption: '', hashtags: [], imageLoading: false, imageUrl: null, imageFailed: false, noReferenceImage: false, captionTimeS: null, imageTimeS: null }
+        : g
+    ))
 
-    setGenerations(prev => [...prev, {
-      localId, platform, message,
-      caption: '', hashtags: [], imageDescription: '',
-      imageUrl: null, imageLoading: false, imageFailed: false,
-      generationId: null, status: 'thinking',
-    }])
-
+    const captionStart = Date.now()
     try {
-      const res  = await fetch(`${WORKER_URL}/api/chat`, {
+      const res = await fetch(`${WORKER_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${freshToken}` },
-        body: JSON.stringify({ character_id: character.id, message, platform, correlation_id: correlationId }),
+        body: JSON.stringify({ character_id: character!.id, message, platform, correlation_id: localId }),
       })
 
       if (res.status === 401) { router.replace('/login'); return }
@@ -771,15 +895,17 @@ export default function ChatClient() {
 
       if (!res.ok) throw new Error(json.error ?? 'Chat failed')
 
-      const { caption, image_description, hashtags, generation_id } = json.data!
+      const { caption, image_description, hashtags } = json.data!
+      const captionTimeS = ((Date.now() - captionStart) / 1000).toFixed(1)
 
       setGenerations(prev => prev.map(g =>
         g.localId === localId
-          ? { ...g, caption, hashtags: hashtags ?? [], imageDescription: image_description, generationId: generation_id, imageLoading: true, status: 'caption_ready' }
+          ? { ...g, caption, hashtags: hashtags ?? [], imageDescription: image_description, imageLoading: true, status: 'caption_ready', captionTimeS }
           : g
       ))
 
-      triggerImageGeneration(localId, character.id, image_description, message, platform, correlationId, freshToken)
+      // Fire off image generation — non-blocking, caption shows immediately
+      startImageGeneration(localId, character!.id, image_description, message, platform, localId, freshToken)
 
     } catch {
       setGenerations(prev => prev.map(g =>
@@ -790,42 +916,24 @@ export default function ChatClient() {
     }
   }
 
-  async function triggerImageGeneration(
-    localId: string,
-    charId: string,
-    imageDescription: string,
-    message: string,
-    platform: string,
-    correlationId: string,
-    authToken: string,
-  ) {
-    try {
-      const res  = await fetch(`${WORKER_URL}/api/generate/image`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({
-          character_id:      charId,
-          image_description: imageDescription,
-          user_prompt:       message,
-          platform,
-          correlation_id:    correlationId,
-        }),
-      })
-      if (res.status === 401) { router.replace('/login'); return }
-      const json = await res.json() as { data?: { image_url: string }; error?: string }
-      if (!res.ok) throw new Error(json.error ?? 'Image generation failed')
-      setGenerations(prev => prev.map(g =>
-        g.localId === localId
-          ? { ...g, imageUrl: json.data!.image_url, imageLoading: false, status: 'done' }
-          : g
-      ))
-    } catch {
-      setGenerations(prev => prev.map(g =>
-        g.localId === localId
-          ? { ...g, imageLoading: false, imageFailed: true, status: 'done' }
-          : g
-      ))
-    }
+  async function handleSend() {
+    if (!input.trim() || sending || !character) return
+
+    const platform      = activePlatform ?? 'general'
+    const message       = input.trim()
+    const correlationId = crypto.randomUUID()
+    setInput('')
+
+    // Push the thinking card — correlationId is its stable key
+    setGenerations(prev => [...prev, {
+      localId: correlationId, platform, message,
+      caption: '', hashtags: [], imageDescription: '',
+      imageUrl: null, imageLoading: false, imageFailed: false, noReferenceImage: false,
+      generationId: null, status: 'thinking',
+      captionTimeS: null, imageTimeS: null,
+    }])
+
+    await executeGeneration(message, platform, correlationId)
   }
 
   // Resolve avatar URL
@@ -838,13 +946,25 @@ export default function ChatClient() {
     } catch { /* fall through */ }
   }
 
+  // ── Loading shell ────────────────────────────────────────────────────────
   if (charLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#0a0a0a]">
-        <div className="w-64 space-y-3 animate-pulse">
-          <div className="h-5 rounded bg-[#262626]" />
-          <div className="h-3 rounded bg-[#1f1f1f]" />
-        </div>
+      <div className="flex h-screen flex-col bg-[#0a0a0a]">
+        {/* Skeleton header */}
+        <header className="flex-shrink-0 bg-[#0a0a0a]">
+          <div className="mx-auto flex w-full max-w-4xl items-center gap-3 px-4 py-3 sm:px-6 animate-pulse">
+            <div className="h-8 w-8 rounded-full bg-[#262626]" />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-4 w-32 rounded bg-[#262626]" />
+              <div className="h-3 w-24 rounded bg-[#1f1f1f]" />
+            </div>
+          </div>
+        </header>
+        <main className="flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-4xl space-y-4 px-4 py-4 sm:px-6">
+            {[0, 1, 2].map(i => <HistoryCardSkeleton key={i} />)}
+          </div>
+        </main>
       </div>
     )
   }
@@ -863,7 +983,7 @@ export default function ChatClient() {
   }
 
   const noRefImage = character.reference_images_ready !== 1
-  const hasContent = historyGens.length > 0 || generations.length > 0
+  const hasContent = historyLoading || historyGens.length > 0 || generations.length > 0
 
   // Build history render list with date dividers
   type RenderItem =
@@ -873,9 +993,7 @@ export default function ChatClient() {
   const historyRenderList: RenderItem[] = []
   let lastDateLabel = ''
   for (const gen of historyGens) {
-    // Hide cards with nothing to show
-    if (!gen.caption && !gen.imageUrl) continue
-
+    if (!gen.caption && !gen.imageUrl) continue  // skip empty cards
     if (gen.createdAt) {
       const label = getDateLabel(gen.createdAt)
       if (label !== lastDateLabel) {
@@ -915,7 +1033,12 @@ export default function ChatClient() {
 
             <div className="min-w-0">
               <h1 className="truncate text-sm font-semibold text-white sm:text-base">{character.name}</h1>
-              <p className="hidden truncate text-xs text-[#71717a] sm:block">{character.domain}</p>
+              <p className="truncate text-xs text-[#71717a]">
+                {character.domain}
+                {generationCount > 0 && (
+                  <span className="ml-2 text-[#3a3a3a]">· {generationCount} post{generationCount !== 1 ? 's' : ''}</span>
+                )}
+              </p>
             </div>
           </div>
 
@@ -934,7 +1057,7 @@ export default function ChatClient() {
       {noRefImage && (
         <div className="flex-shrink-0 border-b border-yellow-900/40 bg-yellow-950/20">
           <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-2 px-4 py-2 sm:px-6">
-            <span className="text-xs text-yellow-400">Upload a reference photo for consistent images.</span>
+            <span className="text-xs text-yellow-400">For consistent images, add a reference photo.</span>
             <Link
               href={`/dashboard/settings?id=${character.id}`}
               className="shrink-0 text-xs font-medium text-yellow-300 underline hover:text-yellow-100"
@@ -953,8 +1076,11 @@ export default function ChatClient() {
           ) : (
             <div className="space-y-4">
 
+              {/* History loading skeletons */}
+              {historyLoading && [0, 1, 2].map(i => <HistoryCardSkeleton key={i} />)}
+
               {/* History with date dividers */}
-              {historyRenderList.map(item => {
+              {!historyLoading && historyRenderList.map(item => {
                 if (item.kind === 'date') {
                   return (
                     <div key={item.key} className="flex items-center gap-3 py-1">
@@ -978,6 +1104,7 @@ export default function ChatClient() {
                           prev.map(g => g.localId === item.gen.localId ? { ...g, ...patch } : g)
                         )
                       }
+                      onSendingChange={setSending}
                       onImageClick={(img) => setLightbox({ images: [img], index: 0 })}
                     />
                   </div>
@@ -985,7 +1112,7 @@ export default function ChatClient() {
               })}
 
               {/* Divider between history and live session */}
-              {historyGens.length > 0 && generations.length > 0 && (
+              {!historyLoading && historyGens.length > 0 && generations.length > 0 && (
                 <div className="flex items-center gap-3 py-1">
                   <div className="flex-1 border-t border-[#1e1e1e]" />
                   <span className="text-[10px] uppercase tracking-widest text-[#3a3a3a]">New</span>
@@ -1008,7 +1135,9 @@ export default function ChatClient() {
                       prev.map(g => g.localId === gen.localId ? { ...g, ...patch } : g)
                     )
                   }
+                  onSendingChange={setSending}
                   onImageClick={(img) => setLightbox({ images: [img], index: 0 })}
+                  onRetry={() => executeGeneration(gen.message, gen.platform, gen.localId)}
                 />
               ))}
 
@@ -1025,7 +1154,8 @@ export default function ChatClient() {
               <button
                 key={p.id}
                 onClick={() => selectPlatform(p.id)}
-                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                disabled={sending}
+                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed ${
                   activePlatform === p.id
                     ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300'
                     : PLATFORM_SHORTCUT[p.id]
