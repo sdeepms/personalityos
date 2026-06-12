@@ -342,6 +342,7 @@ function GenerationCard({
   async function regenerateCaption() {
     if (anyBusy || !token) return
     setCaptionRegenerating(true)
+    onSendingChange(true)
     const start = Date.now()
     try {
       const res  = await fetch(`${WORKER_URL}/api/chat`, {
@@ -355,7 +356,10 @@ function GenerationCard({
       const captionTimeS = ((Date.now() - start) / 1000).toFixed(1)
       onUpdate({ caption: json.data!.caption, hashtags: json.data!.hashtags ?? [], captionTimeS })
     } catch { /* silent */ }
-    finally { setCaptionRegenerating(false) }
+    finally {
+      setCaptionRegenerating(false)
+      onSendingChange(false)
+    }
   }
 
   // Synchronous regenerate: POST blocks until image is ready (~20-30s)
@@ -521,7 +525,7 @@ function GenerationCard({
             <PlatformBadge platform={gen.platform} />
           </div>
           {gen.caption ? (
-            <p className="flex-1 text-sm leading-relaxed text-[#e5e5e5] whitespace-pre-wrap">{gen.caption}</p>
+            <p className="chat-scrollbar flex-1 overflow-y-auto text-sm leading-relaxed text-[#e5e5e5] whitespace-pre-wrap">{gen.caption}</p>
           ) : (
             <p className="flex-1 text-sm italic text-[#3a3a3a]">No caption available.</p>
           )}
@@ -731,6 +735,11 @@ export default function ChatClient() {
     if (generations.length > 0) setTimeout(scrollToBottom, 100)
   }, [generations.length, scrollToBottom])
 
+  // Scroll to bottom after history finishes loading so the most recent post is visible
+  useEffect(() => {
+    if (!historyLoading) setTimeout(scrollToBottom, 150)
+  }, [historyLoading, scrollToBottom])
+
   useEffect(() => {
     if (!characterId) { router.replace('/dashboard'); return }
     const supabase = createClient()
@@ -904,8 +913,8 @@ export default function ChatClient() {
           : g
       ))
 
-      // Fire off image generation — non-blocking, caption shows immediately
-      startImageGeneration(localId, character!.id, image_description, message, platform, localId, freshToken)
+      // Await image generation — sending stays true until both caption and image complete
+      await startImageGeneration(localId, character!.id, image_description, message, platform, localId, freshToken)
 
     } catch {
       setGenerations(prev => prev.map(g =>
@@ -1067,7 +1076,7 @@ export default function ChatClient() {
       )}
 
       {/* ── Scrollable chat area ── */}
-      <main ref={scrollRef} className="flex-1 overflow-y-auto">
+      <main ref={scrollRef} className="flex-1 overflow-y-auto chat-scrollbar">
         <div className="mx-auto w-full max-w-4xl px-4 py-4 sm:px-6">
           {!hasContent ? (
             <div className="flex min-h-[200px] items-center justify-center">
@@ -1191,7 +1200,7 @@ export default function ChatClient() {
               placeholder={`Ask ${character.name} to create content...`}
               rows={1}
               disabled={sending}
-              className="flex-1 resize-none overflow-y-auto rounded-lg border border-[#262626] bg-[#141414] px-3 py-2 text-sm text-white placeholder-[#71717a] outline-none transition-colors focus:border-[#404040] disabled:opacity-50"
+              className="chat-scrollbar flex-1 resize-none overflow-y-auto rounded-lg border border-[#262626] bg-[#141414] px-3 py-2 text-sm text-white placeholder-[#71717a] outline-none transition-colors focus:border-[#404040] disabled:opacity-50"
             />
 
             <Button
