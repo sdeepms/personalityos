@@ -58,14 +58,14 @@ chat.post('/', async (c) => {
   const userId = c.get('userId')
 
   // 1. Parse body
-  let body: { character_id?: string; message?: string; platform?: string }
+  let body: { character_id?: string; message?: string; platform?: string; correlation_id?: string }
   try {
     body = await c.req.json()
   } catch {
     return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
   }
 
-  const { character_id, message, platform } = body
+  const { character_id, message, platform, correlation_id } = body
 
   // 2. Validate required fields
   if (!character_id || !message || !platform) {
@@ -148,6 +148,7 @@ Schema:
       platform: typedPlatform,
       user_prompt: message,
       text_output: caption,
+      correlation_id: correlation_id || null,
       provider: llmResult.provider,
       model_used: llmResult.model,
       generation_time_ms: llmResult.durationMs,
@@ -167,14 +168,14 @@ Schema:
 // REMOVE BEFORE PRODUCTION
 // POST /api/chat/test — no auth, user_id from body
 chatTest.post('/test', async (c) => {
-  let body: { character_id?: string; message?: string; platform?: string; user_id?: string }
+  let body: { character_id?: string; message?: string; platform?: string; user_id?: string; correlation_id?: string }
   try {
     body = await c.req.json()
   } catch {
     return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
   }
 
-  const { character_id, message, platform, user_id } = body
+  const { character_id, message, platform, user_id, correlation_id } = body
 
   if (!character_id || !message || !platform || !user_id) {
     return c.json(
@@ -251,6 +252,7 @@ Schema:
       platform: typedPlatform,
       user_prompt: message,
       text_output: caption,
+      correlation_id: correlation_id || null,
       provider: llmResult.provider,
       model_used: llmResult.model,
       generation_time_ms: llmResult.durationMs,

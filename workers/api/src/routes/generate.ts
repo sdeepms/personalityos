@@ -30,14 +30,14 @@ generate.post('/image', async (c) => {
   const userId = c.get('userId')
 
   // 1. Parse and validate body
-  let body: { character_id?: string; image_description?: string; platform?: string }
+  let body: { character_id?: string; image_description?: string; user_prompt?: string; platform?: string; correlation_id?: string }
   try {
     body = await c.req.json()
   } catch {
     return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
   }
 
-  const { character_id, image_description, platform } = body
+  const { character_id, image_description, user_prompt, platform, correlation_id } = body
   if (!character_id || !image_description || !platform) {
     return c.json(
       { error: 'character_id, image_description, and platform are required', code: 'BAD_REQUEST' },
@@ -92,7 +92,8 @@ generate.post('/image', async (c) => {
       user_id: userId,
       generation_type: 'image',
       platform,
-      user_prompt: image_description,
+      user_prompt: user_prompt ?? image_description,
+      correlation_id: correlation_id || null,
       image_url: result.outputUrl,
       provider: result.provider,
       model_used: result.model,
@@ -132,14 +133,14 @@ generate.get('/image/:id', async (c) => {
 // REMOVE BEFORE PRODUCTION
 // POST /api/generate/test-image — no auth, user_id from body
 generateTest.post('/test-image', async (c) => {
-  let body: { character_id?: string; image_description?: string; platform?: string; user_id?: string }
+  let body: { character_id?: string; image_description?: string; platform?: string; user_id?: string; correlation_id?: string }
   try {
     body = await c.req.json()
   } catch {
     return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
   }
 
-  const { character_id, image_description, platform, user_id } = body
+  const { character_id, image_description, platform, user_id, correlation_id } = body
   if (!character_id || !image_description || !platform || !user_id) {
     return c.json(
       { error: 'character_id, image_description, platform, and user_id are required', code: 'BAD_REQUEST' },
@@ -190,6 +191,7 @@ generateTest.post('/test-image', async (c) => {
       generation_type: 'image',
       platform,
       user_prompt: image_description,
+      correlation_id: correlation_id || null,
       image_url: result.outputUrl,
       provider: result.provider,
       model_used: result.model,

@@ -106,7 +106,7 @@ function CharacterCard({ character }: { character: Character }) {
         <div className="mt-3 flex gap-2">
           <Button
             size="sm"
-            onClick={() => router.push(`/dashboard/${character.id}/chat`)}
+            onClick={() => router.push(`/dashboard/chat?id=${character.id}`)}
             className="bg-indigo-600 text-white hover:bg-indigo-500"
           >
             Open Chat

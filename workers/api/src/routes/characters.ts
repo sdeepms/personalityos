@@ -114,7 +114,7 @@ characters.put('/:id', async (c) => {
 
   const { data: existing } = await db(c.env)
     .from('characters')
-    .select('id')
+    .select('*')
     .eq('id', id)
     .eq('user_id', userId)
     .single()
@@ -124,6 +124,29 @@ characters.put('/:id', async (c) => {
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
+  }
+
+  // Regenerate derived fields when identity changes
+  const identityFields = ['name', 'domain', 'gender', 'age_range', 'nationality', 'style_preset']
+  if (identityFields.some(k => k in body)) {
+    const name        = (body.name        ?? existing.name)        as string
+    const domain      = (body.domain      ?? existing.domain)      as string
+    const gender      = (body.gender      ?? existing.gender)      as string | undefined
+    const ageRange    = (body.age_range   ?? existing.age_range)   as string | undefined
+    const nationality = (body.nationality ?? existing.nationality) as string | undefined
+    const stylePreset = (body.style_preset ?? existing.style_preset) as string | undefined
+
+    const skinTone = nationality?.toLowerCase() === 'indian' ? 'warm brown skin tone' : null
+    updates.visual_style_prompt = [nationality, gender, ageRange, skinTone, domain, 'professional, natural lighting']
+      .filter(Boolean).join(', ')
+
+    updates.system_prompt = [
+      `You are ${name}, ${domain}.`,
+      stylePreset === 'academic_accessible' ? 'Your style is formal, structured, and precise.' : '',
+      stylePreset === 'engaging_explainer'  ? 'Your style is conversational, example-heavy, and energetic.' : '',
+      stylePreset === 'direct_mentor'       ? 'Your style is authoritative, brief, and no-nonsense.' : '',
+      'You generate content in your authentic voice, staying true to your expertise and personality.',
+    ].filter(Boolean).join(' ')
   }
 
   const { data, error } = await db(c.env)
