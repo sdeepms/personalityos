@@ -6,6 +6,9 @@ import { AnthropicAdapter } from '../providers/text/anthropic'
 
 export const chat = new Hono<{ Bindings: Env; Variables: Variables }>()
 
+// REMOVE BEFORE PRODUCTION
+export const chatTest = new Hono<{ Bindings: Env }>()
+
 type Character = {
   id: string
   user_id: string
@@ -156,6 +159,108 @@ Schema:
   const generation_id = insertError ? null : generation?.id ?? null
 
   // 8. Return result
+  return c.json({
+    data: { caption, image_description, platform: typedPlatform, hashtags, generation_id },
+  }, 201)
+})
+
+// REMOVE BEFORE PRODUCTION
+// POST /api/chat/test — no auth, user_id from body
+chatTest.post('/test', async (c) => {
+  let body: { character_id?: string; message?: string; platform?: string; user_id?: string }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
+  }
+
+  const { character_id, message, platform, user_id } = body
+
+  if (!character_id || !message || !platform || !user_id) {
+    return c.json(
+      { error: 'character_id, message, platform, and user_id are required', code: 'BAD_REQUEST' },
+      400
+    )
+  }
+
+  if (!VALID_PLATFORMS.includes(platform as Platform)) {
+    return c.json(
+      { error: `platform must be one of: ${VALID_PLATFORMS.join(', ')}`, code: 'BAD_REQUEST' },
+      400
+    )
+  }
+
+  const typedPlatform = platform as Platform
+
+  const { data: character, error: charError } = await db(c.env)
+    .from('characters')
+    .select('id, user_id, system_prompt')
+    .eq('id', character_id)
+    .eq('user_id', user_id)
+    .single<Character>()
+
+  if (charError || !character) {
+    return c.json({ error: 'Character not found', code: 'CHARACTER_NOT_FOUND' }, 404)
+  }
+
+  const formatRules = PLATFORM_RULES[typedPlatform]
+  const systemPrompt = `${character.system_prompt ?? ''}
+
+PLATFORM: ${typedPlatform}
+FORMAT RULES: ${formatRules}
+
+Always respond with valid JSON only. No markdown. No other text.
+Schema:
+{
+  "caption": "string",
+  "image_description": "string (one sentence scene description featuring the character)",
+  "platform": "string",
+  "hashtags": ["string"]
+}`
+
+  const adapter = getLLMAdapter(c.env)
+  let llmResult: Awaited<ReturnType<typeof adapter.generateText>>
+  try {
+    llmResult = await adapter.generateText(systemPrompt, message)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'LLM call failed'
+    return c.json({ error: msg, code: 'LLM_FAILED' }, 500)
+  }
+
+  let parsed: Record<string, unknown>
+  try {
+    parsed = parseJsonResponse(llmResult.text)
+  } catch {
+    return c.json({ error: 'LLM returned invalid JSON', code: 'LLM_PARSE_ERROR' }, 500)
+  }
+
+  const caption = typeof parsed.caption === 'string' ? parsed.caption : ''
+  const image_description = typeof parsed.image_description === 'string' ? parsed.image_description : ''
+  const hashtags = Array.isArray(parsed.hashtags) ? (parsed.hashtags as string[]) : []
+
+  if (!caption) {
+    return c.json({ error: 'LLM response missing caption', code: 'LLM_PARSE_ERROR' }, 500)
+  }
+
+  const { data: generation, error: insertError } = await db(c.env)
+    .from('generations')
+    .insert({
+      character_id,
+      user_id,
+      generation_type: 'text',
+      platform: typedPlatform,
+      user_prompt: message,
+      text_output: caption,
+      provider: llmResult.provider,
+      model_used: llmResult.model,
+      generation_time_ms: llmResult.durationMs,
+      status: 'completed',
+    })
+    .select('id')
+    .single()
+
+  const generation_id = insertError ? null : generation?.id ?? null
+
   return c.json({
     data: { caption, image_description, platform: typedPlatform, hashtags, generation_id },
   }, 201)

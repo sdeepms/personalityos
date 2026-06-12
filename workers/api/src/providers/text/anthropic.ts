@@ -12,6 +12,24 @@ export type TextResult = {
   durationMs: number
 }
 
+function extractJSON(text: string): string {
+  // Remove thinking tags
+  const noThink = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+
+  // Try ```json fence first
+  const fenceMatch = noThink.match(/```json\s*([\s\S]*?)\s*```/)
+  if (fenceMatch) return fenceMatch[1]
+
+  // Try to find first { to last }
+  const start = noThink.indexOf('{')
+  const end = noThink.lastIndexOf('}')
+  if (start !== -1 && end !== -1) {
+    return noThink.slice(start, end + 1)
+  }
+
+  return noThink
+}
+
 export class AnthropicAdapter {
   constructor(private apiKey: string) {}
 
@@ -39,9 +57,9 @@ export class AnthropicAdapter {
     }
 
     const data = await res.json() as AnthropicResponse
-    const content = data.content?.find((b) => b.type === 'text')?.text
-    if (!content) throw new Error('Anthropic returned empty response')
+    const rawText = data.content?.find((b) => b.type === 'text')?.text
+    if (!rawText) throw new Error('Anthropic returned empty response')
 
-    return { text: content, provider: 'claude_sonnet', model: MODEL, durationMs: Date.now() - startMs }
+    return { text: extractJSON(rawText), provider: 'claude_sonnet', model: MODEL, durationMs: Date.now() - startMs }
   }
 }

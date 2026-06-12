@@ -12,6 +12,24 @@ export type TextResult = {
   durationMs: number
 }
 
+function extractJSON(text: string): string {
+  // Remove thinking tags (Qwen3 chain-of-thought)
+  const noThink = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+
+  // Try ```json fence first
+  const fenceMatch = noThink.match(/```json\s*([\s\S]*?)\s*```/)
+  if (fenceMatch) return fenceMatch[1]
+
+  // Try to find first { to last }
+  const start = noThink.indexOf('{')
+  const end = noThink.lastIndexOf('}')
+  if (start !== -1 && end !== -1) {
+    return noThink.slice(start, end + 1)
+  }
+
+  return noThink
+}
+
 export class OpenRouterAdapter {
   constructor(private apiKey: string) {}
 
@@ -39,9 +57,11 @@ export class OpenRouterAdapter {
     }
 
     const data = await res.json() as OpenRouterResponse
-    const content = data.choices?.[0]?.message?.content
-    if (!content) throw new Error('OpenRouter returned empty response')
+    const rawText = data.choices?.[0]?.message?.content
+    if (!rawText) throw new Error('OpenRouter returned empty response')
 
-    return { text: content, provider: 'qwen3_32b', model: MODEL, durationMs: Date.now() - startMs }
+    console.log('Raw LLM response:', rawText)
+
+    return { text: extractJSON(rawText), provider: 'qwen3_32b', model: MODEL, durationMs: Date.now() - startMs }
   }
 }
