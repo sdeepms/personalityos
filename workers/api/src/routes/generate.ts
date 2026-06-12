@@ -25,53 +25,65 @@ function db(env: Env) {
   return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY)
 }
 
-// POST /api/generate/image
+// POST /api/generate/image — synchronous, blocks until image is ready
 generate.post('/image', async (c) => {
   const userId = c.get('userId')
+  console.log('[generate/image] request from userId:', userId)
 
-  // 1. Parse and validate body
-  let body: { character_id?: string; image_description?: string; user_prompt?: string; platform?: string; correlation_id?: string }
   try {
-    body = await c.req.json()
-  } catch {
-    return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
-  }
+    // 1. Parse and validate body
+    let body: {
+      character_id?: string
+      image_description?: string
+      user_prompt?: string
+      platform?: string
+      correlation_id?: string
+    }
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
+    }
 
-  const { character_id, image_description, user_prompt, platform, correlation_id } = body
-  if (!character_id || !image_description || !platform) {
-    return c.json(
-      { error: 'character_id, image_description, and platform are required', code: 'BAD_REQUEST' },
-      400
-    )
-  }
+    const { character_id, image_description, user_prompt, platform, correlation_id } = body
+    if (!character_id || !image_description || !platform) {
+      return c.json(
+        { error: 'character_id, image_description, and platform are required', code: 'BAD_REQUEST' },
+        400
+      )
+    }
 
-  // 2. Verify ownership
-  const { data: character, error: charError } = await db(c.env)
-    .from('characters')
-    .select('id, user_id, name, visual_style_prompt, prompt_dna, reference_image_urls, reference_images_ready')
-    .eq('id', character_id)
-    .eq('user_id', userId)
-    .single<Character>()
+    // 2. Verify ownership
+    console.log('[generate/image] fetching character:', character_id)
+    const { data: character, error: charError } = await db(c.env)
+      .from('characters')
+      .select('id, user_id, name, visual_style_prompt, prompt_dna, reference_image_urls, reference_images_ready')
+      .eq('id', character_id)
+      .eq('user_id', userId)
+      .single<Character>()
 
-  if (charError || !character) {
-    return c.json({ error: 'Character not found', code: 'CHARACTER_NOT_FOUND' }, 404)
-  }
+    if (charError || !character) {
+      console.error('[generate/image] character fetch error:', charError)
+      return c.json({ error: 'Character not found', code: 'CHARACTER_NOT_FOUND' }, 404)
+    }
+    console.log('[generate/image] character ok, reference_images_ready:', character.reference_images_ready)
 
-  // 3. Require reference images
-  if (character.reference_images_ready !== 1) {
-    return c.json(
-      { error: 'Upload a reference photo first', code: 'REFERENCE_IMAGES_REQUIRED' },
-      400
-    )
-  }
+    // 3. Require reference images
+    if (character.reference_images_ready !== 1) {
+      return c.json(
+        { error: 'Upload a reference photo first', code: 'REFERENCE_IMAGES_REQUIRED' },
+        400
+      )
+    }
 
-  // 4. Assemble prompt from character DNA
-  const assembled = assembleImagePrompt(character, image_description, platform)
+    // 4. Assemble prompt
+    console.log('[generate/image] assembling prompt for platform:', platform)
+    const assembled = assembleImagePrompt(character, image_description, platform)
+    console.log('[generate/image] assembled — ref_url:', assembled.reference_image_url, 'aspect:', assembled.aspect_ratio, 'model:', assembled.model)
 
-  // 5. Call provider adapter
-  let result
-  try {
-    result = await getImageProvider(c.env).generateImage(assembled.prompt, {
+    // 5. Run generation synchronously
+    console.log('[generate/image] calling generateImage...')
+    const result = await getImageProvider(c.env).generateImage(assembled.prompt, {
       referenceImageUrl: assembled.reference_image_url ?? undefined,
       aspectRatio: assembled.aspect_ratio,
       negativePrompt: assembled.negative_prompt,
@@ -79,61 +91,53 @@ generate.post('/image', async (c) => {
       userId,
       characterId: character_id,
     })
+    console.log('[generate/image] generation done, outputUrl:', result.outputUrl, 'durationMs:', result.durationMs)
+
+    // 6. Save completed row
+    const { data: generation, error: insertError } = await db(c.env)
+      .from('generations')
+      .insert({
+        character_id,
+        user_id: userId,
+        generation_type: 'image',
+        platform,
+        user_prompt: user_prompt ?? image_description,
+        correlation_id: correlation_id || null,
+        image_url: result.outputUrl,
+        provider: result.provider,
+        model_used: result.model,
+        generation_time_ms: result.durationMs,
+        status: 'completed',
+      })
+      .select('id')
+      .single()
+
+    if (insertError) {
+      console.error('[generate/image] insert error (returning image anyway):', insertError)
+      return c.json({ data: { image_url: result.outputUrl, generation_id: null } }, 201)
+    }
+
+    return c.json({ data: { image_url: result.outputUrl, generation_id: generation.id } }, 201)
+
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Generation failed'
-    return c.json({ error: message, code: 'GENERATION_FAILED' }, 500)
+    console.error('[generate/image] unhandled error:', err)
+    return c.json({
+      error: err instanceof Error ? err.message : 'Unknown error',
+      code: 'GENERATION_FAILED',
+    }, 500)
   }
-
-  // 6. Insert generation record
-  const { data: generation, error: insertError } = await db(c.env)
-    .from('generations')
-    .insert({
-      character_id,
-      user_id: userId,
-      generation_type: 'image',
-      platform,
-      user_prompt: user_prompt ?? image_description,
-      correlation_id: correlation_id || null,
-      image_url: result.outputUrl,
-      provider: result.provider,
-      model_used: result.model,
-      generation_time_ms: result.durationMs,
-      status: 'completed',
-    })
-    .select('id')
-    .single()
-
-  if (insertError) {
-    // Generation succeeded — return the URL even if DB write fails
-    return c.json({ data: { image_url: result.outputUrl, generation_id: null } })
-  }
-
-  return c.json({ data: { image_url: result.outputUrl, generation_id: generation.id } }, 201)
-})
-
-// GET /api/generate/image/:id
-generate.get('/image/:id', async (c) => {
-  const userId = c.get('userId')
-  const { id } = c.req.param()
-
-  const { data, error } = await db(c.env)
-    .from('generations')
-    .select('*')
-    .eq('id', id)
-    .eq('user_id', userId)
-    .single()
-
-  if (error || !data) {
-    return c.json({ error: 'Generation not found', code: 'NOT_FOUND' }, 404)
-  }
-
-  return c.json({ data })
 })
 
 // REMOVE BEFORE PRODUCTION
 // POST /api/generate/test-image — no auth, user_id from body
 generateTest.post('/test-image', async (c) => {
-  let body: { character_id?: string; image_description?: string; platform?: string; user_id?: string; correlation_id?: string }
+  let body: {
+    character_id?: string
+    image_description?: string
+    platform?: string
+    user_id?: string
+    correlation_id?: string
+  }
   try {
     body = await c.req.json()
   } catch {
