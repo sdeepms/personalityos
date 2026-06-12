@@ -24,6 +24,15 @@ export const MODELS: Model[] = [
     defaultWidth: 1024,
     defaultHeight: 1024,
   },
+  {
+    // Used for reference-image generations — fast (~15s), face-consistent
+    id: 'flux-2-klein-4b-turbo-edit',
+    name: 'Flux 2 Klein 4B Turbo Edit',
+    endpoint: '/api/v1/flux-2-klein-4b-turbo-edit',
+    defaultSteps: 1,
+    defaultWidth: 1024,
+    defaultHeight: 1024,
+  },
 ]
 
 export function getModelById(id: string): Model | undefined {
