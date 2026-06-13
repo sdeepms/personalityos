@@ -48,6 +48,28 @@ app.get('/health', (c) => {
   return c.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
+// Public R2 file serving — no auth required
+app.get('/files/*', async (c) => {
+  const path = c.req.param('*')
+
+  if (!path) {
+    return c.json({ error: 'No path specified' }, 400)
+  }
+
+  const object = await c.env.STORAGE.get(path)
+
+  if (!object) {
+    return c.json({ error: 'File not found' }, 404)
+  }
+
+  const headers = new Headers()
+  object.writeHttpMetadata(headers)
+  headers.set('etag', object.httpEtag)
+  headers.set('cache-control', 'public, max-age=31536000')
+
+  return new Response(object.body, { headers })
+})
+
 // All /api/* routes require a valid Supabase JWT
 app.use('/api/*', authMiddleware)
 
