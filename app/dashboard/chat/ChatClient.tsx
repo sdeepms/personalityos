@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { RefreshCw, Share2, Download, Copy, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { RefreshCw, Share2, Download, Copy, Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/browser'
 
@@ -151,6 +151,32 @@ function getDateLabel(dateStr: string): string {
   return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+function getIntentShortcuts(domain: string): string[] {
+  const d = domain.toLowerCase()
+  if (d.includes('upsc') || d.includes('polity') || d.includes('governance'))
+    return ['Explain a concept', 'Debunk a myth', 'Current affairs angle', 'Case study', 'Exam tip']
+  if (d.includes('finance') || d.includes('invest') || d.includes('money'))
+    return ['Market insight', 'Beginner explainer', 'Common mistake', 'Rule of thumb', 'Case study']
+  if (d.includes('startup') || d.includes('entrepreneur') || d.includes('business'))
+    return ['Founder lesson', 'Contrarian take', 'Framework', 'War story', 'Hiring tip']
+  if (d.includes('coach') || d.includes('motivat') || d.includes('mindset'))
+    return ['Morning motivation', 'Habit tip', 'Mindset shift', 'Client win', 'Hard truth']
+  if (d.includes('history') || d.includes('culture'))
+    return ['Hidden fact', 'Then vs now', 'Forgotten story', 'Myth buster', 'Legacy lesson']
+  if (d.includes('science') || d.includes('tech') || d.includes('ai'))
+    return ['Concept breakdown', 'Latest development', 'Common misconception', 'Analogy', 'Future prediction']
+  if (d.includes('law') || d.includes('legal'))
+    return ['Know your rights', 'Case breakdown', 'Common myth', 'Landmark judgment', 'Plain English']
+  return ['Share an insight', 'Tell a story', 'Debunk a myth', 'Give a tip', 'Ask a question']
+}
+
+function buildInput(intent: string, platform: string): string {
+  if (intent && platform) return `${platform} about: ${intent}: `
+  if (intent)             return `${intent}: `
+  if (platform)           return `${platform} about: `
+  return ''
+}
+
 /**
  * Pairs text + image rows into combined cards.
  * Primary: same correlation_id. Fallback: platform + ≤120s (legacy rows).
@@ -292,6 +318,7 @@ function GenerationCard({
   onUpdate,
   onSendingChange,
   onImageClick,
+  onImagePanelClick,
   onRetry,
 }: {
   gen: ActiveGeneration
@@ -303,6 +330,7 @@ function GenerationCard({
   onUpdate: (patch: Partial<ActiveGeneration>) => void
   onSendingChange: (v: boolean) => void
   onImageClick?: (image: LightboxImage) => void
+  onImagePanelClick?: (gen: ActiveGeneration) => void
   onRetry?: () => void
 }) {
   const [copied,              setCopied]              = useState(false)
@@ -318,9 +346,12 @@ function GenerationCard({
 
   async function copyCaption() {
     try {
-      await navigator.clipboard.writeText(gen.caption)
+      const fullText = gen.hashtags.length > 0
+        ? gen.caption + '\n\n' + displayHashtags.join(' ')
+        : gen.caption
+      await navigator.clipboard.writeText(fullText)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      setTimeout(() => setCopied(false), 1500)
     } catch { /* ignore */ }
   }
 
@@ -449,13 +480,7 @@ function GenerationCard({
       <img
         src={gen.imageUrl}
         alt="Generated"
-        className="w-full h-full object-cover cursor-pointer transition-all duration-200 hover:opacity-90 hover:scale-[1.01]"
-        onClick={() => onImageClick?.({
-          url:       gen.imageUrl!,
-          platform:  gen.platform,
-          caption:   gen.caption,
-          createdAt: gen.createdAt,
-        })}
+        className="w-full h-full object-cover cursor-pointer transition-all duration-200 hover:scale-[1.01]"
       />
     )
 
@@ -488,33 +513,35 @@ function GenerationCard({
   // Caption-only card (no image panel)
   if (!showImagePanel) {
     return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+      <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-4">
         <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
           <PlatformBadge platform={gen.platform} />
           {gen.captionTimeS && (
-            <span className="text-[10px] text-[#3a3a3a]">Generated in {gen.captionTimeS}s</span>
+            <span className="text-[10px] text-slate-400">Generated in {gen.captionTimeS}s</span>
           )}
         </div>
         {gen.caption ? (
           <div
-            className="text-sm leading-relaxed text-zinc-200 overflow-y-auto chat-scrollbar"
+            className="text-sm leading-relaxed text-slate-200 overflow-y-auto chat-scrollbar bg-slate-900/40 rounded-md px-2 py-1"
             style={{ maxHeight: '200px', userSelect: 'text', cursor: 'text' }}
           >
-            {gen.caption}
+            {gen.caption.split('\n').map((line, i, arr) => (
+              <span key={i}>{line}{i < arr.length - 1 && <br />}</span>
+            ))}
           </div>
         ) : (
           <p className="text-sm italic text-[#3a3a3a]">No caption available.</p>
         )}
         <div className="mt-3 flex items-center justify-end gap-1.5">
-          <IconBtn onClick={copyCaption} title={copied ? 'Copied!' : 'Copy caption'}>
-            {copied
-              ? <span className="text-[10px] font-medium text-green-400">✓</span>
-              : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
-            }
-          </IconBtn>
+          <Button variant="ghost" size="icon"
+            className={`h-8 w-8 rounded-full transition-all duration-200 ${
+              copied
+                ? 'border border-green-500 text-green-400 bg-green-500/10'
+                : 'border border-zinc-600 text-white bg-transparent hover:bg-zinc-800 hover:border-zinc-400'
+            }`}
+            onClick={copyCaption} title="Copy">
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          </Button>
           <IconBtn onClick={regenerateCaption} disabled={anyBusy} title="Regenerate caption" spinning={captionRegenerating}>
             <RefreshCw size={13} />
           </IconBtn>
@@ -526,13 +553,16 @@ function GenerationCard({
   const panelWidth = IMAGE_PANEL_WIDTH[gen.platform] ?? 'w-64'
 
   return (
-    <div className="flex flex-row rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900/50" style={{ height: '280px' }}>
+    <div className="flex flex-row rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900" style={{ height: '280px' }}>
 
       {/* LEFT — image, half width */}
-      <div className="relative w-1/2 flex-shrink-0 overflow-hidden">
+      <div
+        className="relative w-1/2 flex-shrink-0 overflow-hidden cursor-pointer"
+        onClick={() => gen.imageUrl && onImagePanelClick?.(gen)}
+      >
         {imagePanelContent}
         {gen.imageUrl && (
-          <div className="absolute bottom-2 right-2 z-10 flex gap-1.5">
+          <div className="absolute bottom-2 right-2 z-10 flex gap-1.5" onClick={e => e.stopPropagation()}>
             <button
               onClick={downloadImage}
               title="Download image"
@@ -563,23 +593,25 @@ function GenerationCard({
       </div>
 
       {/* RIGHT — caption panel */}
-      <div className="w-1/2 flex flex-col overflow-hidden p-4 gap-2 border-l border-zinc-800">
+      <div className="w-1/2 flex flex-col overflow-hidden p-4 gap-2 border-l border-zinc-700 bg-slate-900/40">
 
         {/* a) Badge + timing */}
         <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
           <PlatformBadge platform={gen.platform} />
           {gen.captionTimeS && (
-            <span className="text-[10px] text-[#3a3a3a]">Generated in {gen.captionTimeS}s</span>
+            <span className="text-[10px] text-slate-400">Generated in {gen.captionTimeS}s</span>
           )}
         </div>
 
         {/* b) Caption — scrollable, selectable */}
         {gen.caption ? (
           <div
-            className="flex-1 min-h-0 overflow-y-auto text-sm text-zinc-200 leading-relaxed scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent"
+            className="flex-1 min-h-0 overflow-y-auto text-sm text-slate-200 leading-relaxed scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent"
             style={{ userSelect: 'text', cursor: 'text' }}
           >
-            {gen.caption}
+            {gen.caption.split('\n').map((line, i, arr) => (
+              <span key={i}>{line}{i < arr.length - 1 && <br />}</span>
+            ))}
           </div>
         ) : (
           <p className="flex-1 text-sm italic text-[#3a3a3a]">No caption available.</p>
@@ -599,12 +631,13 @@ function GenerationCard({
         {/* d) Action buttons */}
         <div className="flex shrink-0 items-center justify-end gap-1.5">
           <Button variant="ghost" size="icon"
-            className="h-7 w-7 rounded-full bg-black/70 border border-white/30 text-white hover:bg-black hover:border-white"
-            onClick={copyCaption} title="Copy caption">
-            {copied
-              ? <span className="text-[9px] font-medium text-green-400">✓</span>
-              : <Copy className="h-3 w-3" />
-            }
+            className={`h-8 w-8 rounded-full transition-all duration-200 ${
+              copied
+                ? 'border border-green-500 text-green-400 bg-green-500/10'
+                : 'border border-zinc-600 text-white bg-transparent hover:bg-zinc-800 hover:border-zinc-400'
+            }`}
+            onClick={copyCaption} title="Copy">
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
           </Button>
           <IconBtn onClick={regenerateCaption} disabled={anyBusy} title="Regenerate caption" spinning={captionRegenerating}>
             <RefreshCw size={13} />
@@ -764,10 +797,14 @@ export default function ChatClient() {
   const [generations,     setGenerations]   = useState<ActiveGeneration[]>([])
   const [input,           setInput]         = useState('')
   const [activePlatform,  setActivePlatform]= useState<string | null>(null)
+  const [intentPrefix,    setIntentPrefix]  = useState('')
+  const [platformPrefix,  setPlatformPrefix]= useState('')
   const [sending,         setSending]       = useState(false)
   const [token,           setToken]         = useState<string | null>(null)
   const [avatarError,     setAvatarError]   = useState(false)
-  const [lightbox,        setLightbox]      = useState<{ images: LightboxImage[]; index: number } | null>(null)
+  const [lightbox,             setLightbox]             = useState<{ images: LightboxImage[]; index: number } | null>(null)
+  const [modalGeneration,      setModalGeneration]      = useState<ActiveGeneration | null>(null)
+  const [modalCaptionExpanded, setModalCaptionExpanded] = useState(false)
 
   const scrollRef   = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -795,6 +832,10 @@ export default function ChatClient() {
     const t = setTimeout(scrollToBottom, 100)
     return () => clearTimeout(t)
   }, [generations.length, scrollToBottom])
+
+  useEffect(() => {
+    setModalCaptionExpanded(false)
+  }, [modalGeneration])
 
   useEffect(() => {
     if (!characterId) { router.replace('/dashboard'); return }
@@ -859,14 +900,20 @@ export default function ChatClient() {
 
   function selectPlatform(platformId: string) {
     if (sending) return
-    setActivePlatform(platformId)
-    const cfg    = PLATFORMS.find(p => p.id === platformId)
-    const prefix = cfg?.prefix ?? `Create a ${platformId} post about: `
-    setInput(prefix)
+    const p = PLATFORMS.find(pl => pl.id === platformId)
+    if (!p) return
+    const platformText    = p.prefix.replace(/ about: $/, '')
+    const isToggle        = platformPrefix === platformText
+    const newPlatformText = isToggle ? '' : platformText
+    const newPlatformId   = isToggle ? null : platformId
+    setPlatformPrefix(newPlatformText)
+    setActivePlatform(newPlatformId)
+    const newInput = buildInput(intentPrefix, newPlatformText)
+    setInput(newInput)
     setTimeout(() => {
       if (textareaRef.current) {
         textareaRef.current.focus()
-        textareaRef.current.setSelectionRange(prefix.length, prefix.length)
+        textareaRef.current.setSelectionRange(newInput.length, newInput.length)
       }
     }, 0)
   }
@@ -1049,6 +1096,7 @@ export default function ChatClient() {
 
   const noRefImage = character.reference_images_ready !== 1
   const hasContent = historyLoading || historyGens.length > 0 || generations.length > 0
+  const intentShortcuts = getIntentShortcuts(character.domain)
 
   // Build history render list with date dividers
   type RenderItem =
@@ -1171,6 +1219,7 @@ export default function ChatClient() {
                       }
                       onSendingChange={setSending}
                       onImageClick={(img) => setLightbox({ images: [img], index: 0 })}
+                      onImagePanelClick={(g) => setModalGeneration(g)}
                     />
                   </div>
                 )
@@ -1202,6 +1251,7 @@ export default function ChatClient() {
                   }
                   onSendingChange={setSending}
                   onImageClick={(img) => setLightbox({ images: [img], index: 0 })}
+                  onImagePanelClick={(g) => setModalGeneration(g)}
                   onRetry={() => executeGeneration(gen.message, gen.platform, gen.localId)}
                 />
               ))}
@@ -1210,6 +1260,31 @@ export default function ChatClient() {
           )}
         </div>
       </main>
+
+      {/* ── Intent shortcuts ── */}
+      <div className="flex-shrink-0 bg-[#0a0a0a]">
+        <div className="mx-auto w-full max-w-4xl px-4 pt-2 sm:px-6">
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {intentShortcuts.map(intent => (
+              <button key={intent}
+                onClick={() => {
+                  const newIntent = intentPrefix === intent ? '' : intent
+                  setIntentPrefix(newIntent)
+                  const newInput = buildInput(newIntent, platformPrefix)
+                  setInput(newInput)
+                  setTimeout(() => textareaRef.current?.focus(), 0)
+                }}
+                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  intentPrefix === intent
+                    ? 'bg-zinc-600 text-white border-zinc-500'
+                    : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'
+                }`}>
+                {intent}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {/* ── Platform shortcuts ── */}
       <div className="flex-shrink-0 bg-[#0a0a0a]">
@@ -1222,7 +1297,7 @@ export default function ChatClient() {
                 disabled={sending}
                 className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed ${
                   activePlatform === p.id
-                    ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300'
+                    ? `${PLATFORM_SHORTCUT[p.id]} bg-zinc-800`
                     : PLATFORM_SHORTCUT[p.id]
                 }`}
               >
@@ -1249,7 +1324,15 @@ export default function ChatClient() {
             <textarea
               ref={textareaRef}
               value={input}
-              onChange={e => setInput(e.target.value)}
+              onChange={e => {
+                const v = e.target.value
+                setInput(v)
+                if (v === '') {
+                  setIntentPrefix('')
+                  setPlatformPrefix('')
+                  setActivePlatform(null)
+                }
+              }}
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
               }}
@@ -1281,6 +1364,65 @@ export default function ChatClient() {
           initialIndex={lightbox.index}
           onClose={() => setLightbox(null)}
         />
+      )}
+
+      {/* ── Image modal (chat card click) ── */}
+      {modalGeneration && (
+        <div
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center"
+          onClick={() => setModalGeneration(null)}
+        >
+          <div
+            className="relative bg-black rounded-2xl overflow-hidden"
+            style={{ width: '90vw', maxWidth: '560px', height: '85vh' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setModalGeneration(null)}
+              className="absolute top-3 right-3 z-10 h-8 w-8 rounded-full bg-black/60 border border-white/20 text-white flex items-center justify-center"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div
+              className="relative w-full h-full"
+              onClick={() => setModalCaptionExpanded(false)}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={modalGeneration.imageUrl ?? ''}
+                alt="Generated"
+                className="w-full h-full object-cover"
+              />
+
+              {modalGeneration.caption && (
+                <div
+                  className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-4 cursor-pointer"
+                  style={{ height: modalCaptionExpanded ? '50%' : 'auto' }}
+                  onClick={e => {
+                    e.stopPropagation()
+                    setModalCaptionExpanded(v => !v)
+                  }}
+                >
+                  <p
+                    className={`text-sm text-white leading-relaxed ${modalCaptionExpanded ? 'overflow-y-auto' : 'line-clamp-2'}`}
+                    style={{
+                      maxHeight: modalCaptionExpanded ? 'calc(50vh - 80px)' : undefined,
+                      userSelect: 'text',
+                    }}
+                  >
+                    {modalGeneration.caption.split('\n').map((line, i, arr) => (
+                      <span key={i}>{line}{i < arr.length - 1 && <br />}</span>
+                    ))}
+                  </p>
+                  {!modalCaptionExpanded && (
+                    <p className="text-xs text-zinc-400 mt-1">Tap to read more →</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
     </div>
