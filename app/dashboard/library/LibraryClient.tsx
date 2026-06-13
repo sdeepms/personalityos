@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   X, Download, Copy, Check, Loader2, FolderOpen,
-  Search, Settings, ChevronLeft, ChevronRight, ImageOff,
+  Search, Settings, ChevronLeft, ChevronRight, ImageOff, SlidersHorizontal,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -431,7 +431,8 @@ function LibraryModal({ group, showImage, onClose }: { group: GenerationGroup; s
             <img
               src={imageUrl ?? undefined}
               alt="Generated"
-              className="w-full h-full object-cover"
+              className="block w-full"
+              style={{ maxHeight: '75vh', objectFit: 'contain', background: '#000' }}
             />
 
             {/* Caption overlay */}
@@ -577,6 +578,7 @@ export default function LibraryClient() {
   const [token,         setToken]         = useState<string | null>(null)
   const [avatarError,   setAvatarError]   = useState(false)
   const [searchQuery,   setSearchQuery]   = useState('')
+  const [filterOpen,    setFilterOpen]    = useState(false)
 
   const fetchLibrary = useCallback(async (jwt: string, page: number, append = false) => {
     const res = await fetch(
@@ -749,8 +751,9 @@ export default function LibraryClient() {
         </div>
 
         {/* ── Filter tabs + inline search ── */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
+        <div className="flex items-center gap-3 mb-4 relative">
+          {/* Desktop filter tabs */}
+          <div className="hidden md:flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
             {(['all', 'images', 'captions'] as const).map(tab => (
               <button key={tab}
                 onClick={() => setFilter(tab)}
@@ -764,7 +767,29 @@ export default function LibraryClient() {
             ))}
           </div>
 
-          <div className="relative flex-1">
+          {/* Mobile filter button */}
+          <div className="md:hidden relative">
+            <button onClick={() => setFilterOpen(v => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-zinc-300">
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              {filter === 'all' ? 'All' : filter === 'images' ? 'Images' : 'Captions'}
+            </button>
+            {filterOpen && (
+              <div className="absolute top-full left-0 mt-1 z-20 bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden shadow-xl">
+                {(['all', 'images', 'captions'] as const).map(tab => (
+                  <button key={tab}
+                    onClick={() => { setFilter(tab); setFilterOpen(false) }}
+                    className={`block w-full text-left px-4 py-2 text-sm ${
+                      filter === tab ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+                    }`}>
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="relative flex-1 md:flex-none md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
             <input
               type="text"

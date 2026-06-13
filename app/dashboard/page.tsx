@@ -215,7 +215,7 @@ export default function DashboardPage() {
               Each character is a complete AI identity with its own voice, style, and visual DNA.
             </p>
           </div>
-          <Link href="/dashboard/create">
+          <Link href="/dashboard/create" className="hidden md:block">
             <Button className="bg-indigo-600 text-white hover:bg-indigo-500">
               + Create Character
             </Button>
@@ -258,7 +258,7 @@ export default function DashboardPage() {
                 <CharacterCard key={c.id} character={c} />
               ))}
               <Link href="/dashboard/create" className="block">
-                <div className="group rounded-xl border-2 border-dashed border-zinc-700 bg-transparent h-full min-h-[280px] flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-indigo-500 hover:bg-indigo-500/5 transition-all duration-200">
+                <div className="group rounded-xl border-2 border-dashed border-indigo-500/40 bg-indigo-500/5 md:border-zinc-700 md:bg-transparent h-full min-h-[120px] md:min-h-[280px] flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-indigo-500 hover:bg-indigo-500/5 transition-all duration-200">
                   <div className="h-12 w-12 rounded-full border-2 border-zinc-600 group-hover:border-indigo-400 flex items-center justify-center transition-colors">
                     <span className="text-2xl text-zinc-500 group-hover:text-indigo-400 transition-colors leading-none">+</span>
                   </div>

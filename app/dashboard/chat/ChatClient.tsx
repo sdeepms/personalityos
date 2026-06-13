@@ -60,6 +60,7 @@ type ActiveGeneration = {
   createdAt?: string
   captionTimeS: string | null
   imageTimeS: string | null
+  totalTimeS: string | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -222,6 +223,7 @@ function pairHistoryItems(items: HistoryItem[]): ActiveGeneration[] {
       createdAt:        t.created_at,
       captionTimeS:     null,
       imageTimeS:       null,
+      totalTimeS:       null,
     })
   }
 
@@ -243,6 +245,7 @@ function pairHistoryItems(items: HistoryItem[]): ActiveGeneration[] {
       createdAt:        img.created_at,
       captionTimeS:     null,
       imageTimeS:       null,
+      totalTimeS:       null,
     })
   }
 
@@ -516,8 +519,8 @@ function GenerationCard({
       <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-4">
         <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
           <PlatformBadge platform={gen.platform} />
-          {gen.captionTimeS && (
-            <span className="text-[10px] text-slate-400">Generated in {gen.captionTimeS}s</span>
+          {(gen.totalTimeS ?? gen.captionTimeS) && (
+            <span className="text-[10px] text-slate-400">Generated in {gen.totalTimeS ?? gen.captionTimeS}s</span>
           )}
         </div>
         {gen.caption ? (
@@ -553,14 +556,20 @@ function GenerationCard({
   const panelWidth = IMAGE_PANEL_WIDTH[gen.platform] ?? 'w-64'
 
   return (
-    <div className="flex flex-row rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900" style={{ height: '280px' }}>
+    <div className="flex flex-col md:flex-row rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900">
 
       {/* LEFT — image, half width */}
       <div
-        className="relative w-1/2 flex-shrink-0 overflow-hidden cursor-pointer"
+        className="relative w-full md:w-1/2 flex-shrink-0 overflow-hidden cursor-pointer aspect-[4/3] md:aspect-auto md:h-[280px]"
         onClick={() => gen.imageUrl && onImagePanelClick?.(gen)}
       >
         {imagePanelContent}
+        {gen.caption && (
+          <div className="md:hidden absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-3 pointer-events-none">
+            <PlatformBadge platform={gen.platform} />
+            <p className="mt-1 line-clamp-2 text-sm text-white leading-snug">{gen.caption}</p>
+          </div>
+        )}
         {gen.imageUrl && (
           <div className="absolute bottom-2 right-2 z-10 flex gap-1.5" onClick={e => e.stopPropagation()}>
             <button
@@ -593,13 +602,13 @@ function GenerationCard({
       </div>
 
       {/* RIGHT — caption panel */}
-      <div className="w-1/2 flex flex-col overflow-hidden p-4 gap-2 border-l border-zinc-700 bg-slate-900/40">
+      <div className="hidden md:flex flex-col flex-1 overflow-hidden p-4 gap-2 border-l border-zinc-800">
 
         {/* a) Badge + timing */}
         <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
           <PlatformBadge platform={gen.platform} />
-          {gen.captionTimeS && (
-            <span className="text-[10px] text-slate-400">Generated in {gen.captionTimeS}s</span>
+          {(gen.totalTimeS ?? gen.captionTimeS) && (
+            <span className="text-[10px] text-slate-400">Generated in {gen.totalTimeS ?? gen.captionTimeS}s</span>
           )}
         </div>
 
@@ -927,6 +936,7 @@ export default function ChatClient() {
     platform: string,
     correlationId: string,
     authToken: string,
+    generationStart: number,
   ) {
     const start = Date.now()
     try {
@@ -958,9 +968,10 @@ export default function ChatClient() {
       if (!res.ok) throw new Error(json.error ?? 'Image request failed')
 
       const imageTimeS = ((Date.now() - start) / 1000).toFixed(1)
+      const totalTimeS = ((Date.now() - generationStart) / 1000).toFixed(1)
       setGenerations(prev => prev.map(g =>
         g.localId === localId
-          ? { ...g, imageUrl: json.data!.image_url, imageLoading: false, status: 'done', imageTimeS }
+          ? { ...g, imageUrl: json.data!.image_url, imageLoading: false, status: 'done', imageTimeS, totalTimeS }
           : g
       ))
       setGenerationCount(prev => prev + 1)
@@ -981,12 +992,13 @@ export default function ChatClient() {
     const freshToken = session.access_token
     setToken(freshToken)
 
+    const generationStart = Date.now()
     setSending(true)
 
     // Reset card to thinking state (handles both new card and retry)
     setGenerations(prev => prev.map(g =>
       g.localId === localId
-        ? { ...g, status: 'thinking', caption: '', hashtags: [], imageLoading: false, imageUrl: null, imageFailed: false, noReferenceImage: false, captionTimeS: null, imageTimeS: null }
+        ? { ...g, status: 'thinking', caption: '', hashtags: [], imageLoading: false, imageUrl: null, imageFailed: false, noReferenceImage: false, captionTimeS: null, imageTimeS: null, totalTimeS: null }
         : g
     ))
 
@@ -1017,7 +1029,7 @@ export default function ChatClient() {
       ))
 
       // Await image generation — sending stays true until both caption and image complete
-      await startImageGeneration(localId, character!.id, image_description, message, platform, localId, freshToken)
+      await startImageGeneration(localId, character!.id, image_description, message, platform, localId, freshToken, generationStart)
 
     } catch {
       setGenerations(prev => prev.map(g =>
@@ -1042,7 +1054,7 @@ export default function ChatClient() {
       caption: '', hashtags: [], imageDescription: '',
       imageUrl: null, imageLoading: false, imageFailed: false, noReferenceImage: false,
       generationId: null, status: 'thinking',
-      captionTimeS: null, imageTimeS: null,
+      captionTimeS: null, imageTimeS: null, totalTimeS: null,
     }])
 
     await executeGeneration(message, platform, correlationId)
@@ -1261,12 +1273,16 @@ export default function ChatClient() {
         </div>
       </main>
 
+      {/* ── Bottom input section ── */}
+      <div className="sticky bottom-0 bg-[#0a0a0a] border-t border-zinc-800 z-10">
+
       {/* ── Intent shortcuts ── */}
-      <div className="flex-shrink-0 bg-[#0a0a0a]">
+      <div>
         <div className="mx-auto w-full max-w-5xl px-4 pt-2 sm:px-6">
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none flex-nowrap">
             {intentShortcuts.map(intent => (
               <button key={intent}
+                disabled={sending}
                 onClick={() => {
                   const newIntent = intentPrefix === intent ? '' : intent
                   setIntentPrefix(newIntent)
@@ -1274,7 +1290,7 @@ export default function ChatClient() {
                   setInput(newInput)
                   setTimeout(() => textareaRef.current?.focus(), 0)
                 }}
-                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${
                   intentPrefix === intent
                     ? 'bg-zinc-600 text-white border-zinc-500'
                     : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'
@@ -1287,15 +1303,15 @@ export default function ChatClient() {
       </div>
 
       {/* ── Platform shortcuts ── */}
-      <div className="flex-shrink-0 bg-[#0a0a0a]">
+      <div>
         <div className="mx-auto w-full max-w-5xl px-4 py-2 sm:px-6">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none flex-nowrap">
             {PLATFORMS.map(p => (
               <button
                 key={p.id}
                 onClick={() => selectPlatform(p.id)}
                 disabled={sending}
-                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed ${
+                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${
                   activePlatform === p.id
                     ? `${PLATFORM_SHORTCUT[p.id]} bg-zinc-800`
                     : PLATFORM_SHORTCUT[p.id]
@@ -1309,7 +1325,7 @@ export default function ChatClient() {
       </div>
 
       {/* ── Input area ── */}
-      <div className="flex-shrink-0 bg-[#0a0a0a]">
+      <div>
         <div className="mx-auto w-full max-w-5xl px-4 py-3 sm:px-6">
           <div className="flex items-end gap-2 sm:gap-3">
             {avatarUrl ? (
@@ -1356,6 +1372,8 @@ export default function ChatClient() {
           </p>
         </div>
       </div>
+
+      </div>{/* end sticky bottom section */}
 
       {/* ── Image lightbox ── */}
       {lightbox && (
