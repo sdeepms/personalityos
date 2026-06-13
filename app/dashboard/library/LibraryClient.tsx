@@ -4,20 +4,19 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Info, X, Download, Copy, Check, Loader2, FolderOpen,
-  MessageCircle, Settings, ChevronLeft, ChevronRight, ImageOff,
+  X, Download, Copy, Check, Loader2, FolderOpen,
+  Search, Settings, ChevronLeft, ChevronRight, ImageOff,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { createClient } from '@/lib/supabase/browser'
 
 const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL ?? 'http://localhost:8787'
 
 const OVERLAY_GRADIENT =
-  'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.75) 40%, rgba(0,0,0,0.92) 100%)'
+  'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.5) 30%, rgba(0,0,0,0.85) 70%, rgba(0,0,0,0.95) 100%)'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -177,7 +176,7 @@ function CopyBtn({ text, fullWidth }: { text: string; fullWidth?: boolean }) {
   }
   return (
     <Button size="sm" variant="outline" onClick={copy}
-      className={`border-[#262626] text-[#a1a1aa] hover:text-white text-xs gap-1.5 ${fullWidth ? 'w-full' : 'flex-1'}`}>
+      className={`bg-black text-white border-white hover:bg-zinc-900 hover:text-white hover:border-white text-xs gap-1.5 ${fullWidth ? 'w-full' : 'flex-1'}`}>
       {copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
       {copied ? 'Copied!' : 'Copy caption'}
     </Button>
@@ -195,7 +194,7 @@ function DownloadBtn({ imageUrl, fullWidth }: { imageUrl: string; fullWidth?: bo
   }
   return (
     <Button size="sm" variant="outline" onClick={dl}
-      className={`border-[#262626] text-[#a1a1aa] hover:text-white text-xs gap-1.5 ${fullWidth ? 'w-full' : 'flex-1'}`}>
+      className={`bg-black text-white border-white hover:bg-zinc-900 hover:text-white hover:border-white text-xs gap-1.5 ${fullWidth ? 'w-full' : 'flex-1'}`}>
       <Download size={12} /> Download
     </Button>
   )
@@ -264,16 +263,16 @@ function CardSkeletonGrid() {
 
 // ─── Image card (overlay design, carousel support) ────────────────────────────
 
-function ImageCard({ group, onClick }: { group: GenerationGroup; onClick: () => void }) {
-  const [activeIndex,   setActiveIndex]   = useState(0)
-  const [failedImages,  setFailedImages]  = useState<Set<number>>(new Set())
+function ImageCard({ group, onClick, imageOnly }: { group: GenerationGroup; onClick: () => void; imageOnly?: boolean }) {
+  const [activeIndex,  setActiveIndex]  = useState(0)
+  const [failedImages, setFailedImages] = useState<Set<number>>(new Set())
 
-  const platform     = group.caption?.platform ?? group.images[0]?.platform ?? null
-  const caption      = group.caption?.text_output ?? ''
-  const aspectClass  = PLATFORM_ASPECT[platform ?? ''] ?? 'aspect-[4/3]'
-  const current      = group.images[activeIndex]
+  const platform  = group.caption?.platform ?? group.images[0]?.platform ?? null
+  const caption   = group.caption?.text_output ?? ''
+  const aspectClass = platform === 'story' ? 'aspect-[9/16]' : platform === 'x' ? 'aspect-[16/9]' : 'aspect-[4/3]'
+  const current   = group.images[activeIndex]
   const currentFailed = failedImages.has(activeIndex)
-  const multi        = group.images.length > 1
+  const multi     = group.images.length > 1
 
   function markFailed(idx: number) {
     return (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -338,15 +337,19 @@ function ImageCard({ group, onClick }: { group: GenerationGroup; onClick: () => 
       {/* Gradient overlay */}
       <div className="absolute bottom-0 left-0 right-0 z-10 p-3" style={{ background: OVERLAY_GRADIENT }}>
         <div className="mb-1.5 flex items-center justify-between gap-2">
-          <PlatformBadge platform={platform} />
-          <span className="shrink-0 text-xs text-zinc-400">{formatRelativeDate(group.created_at)}</span>
+          <span style={{ textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
+            <PlatformBadge platform={platform} />
+          </span>
+          <span className="shrink-0 text-xs font-medium text-white" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+            {formatRelativeDate(group.created_at)}
+          </span>
         </div>
-        {caption && (
+        {!imageOnly && caption && (
           <p className="mb-2 line-clamp-2 text-sm leading-snug text-white">{caption}</p>
         )}
         <div className="flex gap-1.5" onClick={e => e.stopPropagation()}>
           {current?.image_url && !currentFailed && <OverlayDownload imageUrl={current.image_url} />}
-          {caption && <OverlayCopy text={caption} />}
+          {!imageOnly && caption && <OverlayCopy text={caption} />}
         </div>
       </div>
     </div>
@@ -378,6 +381,138 @@ function CaptionCard({ group, onClick }: { group: GenerationGroup; onClick: () =
   )
 }
 
+// ─── Library modal ─────────────────────────────────────────────────────────────
+
+function LibraryModal({ group, onClose }: { group: GenerationGroup; onClose: () => void }) {
+  const [captionExpanded, setCaptionExpanded] = useState(false)
+
+  useEffect(() => {
+    setCaptionExpanded(false)
+  }, [group])
+
+  const platform = group.caption?.platform ?? group.images[0]?.platform ?? null
+  const caption  = group.caption?.text_output ?? ''
+  const hashtags = parseHashtags(caption)
+  const imageUrl = group.images[0]?.image_url ?? null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.9)' }}
+      onClick={onClose}
+    >
+      <div
+        className="relative rounded-xl overflow-hidden bg-black"
+        style={{ width: '90vw', maxWidth: '800px', maxHeight: '90vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-3 top-3 z-[60] flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70"
+        >
+          <X size={16} />
+        </button>
+
+        {/* Image area */}
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={imageUrl}
+            alt="Generated"
+            className="block w-full"
+            style={{ maxHeight: '75vh', objectFit: 'contain', background: '#000' }}
+            onClick={() => setCaptionExpanded(false)}
+          />
+        ) : (
+          <div
+            className="flex h-[200px] w-full items-center justify-center bg-[#141414]"
+            onClick={() => setCaptionExpanded(false)}
+          >
+            <span className="text-sm text-zinc-500">No image</span>
+          </div>
+        )}
+
+        {/* Caption overlay */}
+        {captionExpanded ? (
+          /* ── EXPANDED ── */
+          <div
+            className="absolute bottom-0 left-0 right-0 p-4"
+            style={{
+              height: '50%',
+              background: 'rgba(0,0,0,0.95)',
+              transition: 'height 0.3s ease',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex h-full flex-col">
+              {/* Row 1: badge + timestamp + collapse */}
+              <div className="flex shrink-0 items-center gap-2">
+                <PlatformBadge platform={platform} />
+                <span className="flex-1 text-xs text-white">{formatRelativeDate(group.created_at)}</span>
+                <button
+                  onClick={() => setCaptionExpanded(false)}
+                  className="text-xs text-zinc-400 transition-colors hover:text-white"
+                >
+                  ✕ collapse
+                </button>
+              </div>
+
+              {/* Row 2: full caption, scrollable */}
+              <div
+                className="mt-2 overflow-y-auto text-sm leading-relaxed text-white scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent"
+                style={{
+                  maxHeight: 'calc(50vh - 120px)',
+                  userSelect: 'text',
+                  cursor: 'text',
+                }}
+              >
+                {caption || 'No caption'}
+              </div>
+
+              {/* Row 3: hashtags */}
+              {hashtags.length > 0 && (
+                <div className="mt-2 flex shrink-0 flex-wrap gap-1">
+                  {hashtags.map((tag, i) => (
+                    <span key={i} className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-indigo-400">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Row 4: action buttons */}
+              <div className="mt-2 flex shrink-0 gap-2">
+                {caption && <CopyBtn text={caption} fullWidth />}
+                {imageUrl && <DownloadBtn imageUrl={imageUrl} fullWidth />}
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* ── COLLAPSED ── */
+          <div
+            className="absolute bottom-0 left-0 right-0 cursor-pointer p-4"
+            style={{
+              background: 'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.95) 100%)',
+            }}
+            onClick={() => setCaptionExpanded(true)}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <PlatformBadge platform={platform} />
+              <span className="text-xs text-white">{formatRelativeDate(group.created_at)}</span>
+            </div>
+            {caption && (
+              <p className="mt-1 line-clamp-2 text-sm text-white">{caption}</p>
+            )}
+            <p className="mt-1 text-xs text-zinc-400">Tap to read more →</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Empty state ───────────────────────────────────────────────────────────────
 
 function EmptyState({ characterId }: { characterId: string }) {
@@ -399,200 +534,6 @@ function EmptyState({ characterId }: { characterId: string }) {
   )
 }
 
-// ─── Modal ─────────────────────────────────────────────────────────────────────
-
-function LibraryModal({ group, onClose }: { group: GenerationGroup; onClose: () => void }) {
-  const [orientation, setOrientation] = useState<'portrait' | 'landscape' | 'unknown'>('unknown')
-  const [activeIndex,  setActiveIndex]  = useState(0)
-  const [failedImages, setFailedImages] = useState<Set<number>>(new Set())
-
-  const caption  = group.caption?.text_output ?? ''
-  const hashtags = parseHashtags(caption)
-  const platform = group.caption?.platform ?? group.images[0]?.platform ?? null
-  const hasImgs  = group.images.length > 0
-  const multi    = group.images.length > 1
-  const current  = group.images[activeIndex]
-  const curFailed = failedImages.has(activeIndex)
-  const hasCurrentImg = hasImgs && !!current?.image_url && !curFailed
-
-  function markFailed(idx: number) {
-    return (e: React.SyntheticEvent<HTMLImageElement>) => {
-      e.currentTarget.style.display = 'none'
-      setFailedImages(prev => new Set([...prev, idx]))
-    }
-  }
-
-  function detectOrientation(e: React.SyntheticEvent<HTMLImageElement>) {
-    const img = e.currentTarget
-    setOrientation(img.naturalHeight > img.naturalWidth ? 'portrait' : 'landscape')
-  }
-
-  const goPrev = () => setActiveIndex(i => Math.max(0, i - 1))
-  const goNext = () => setActiveIndex(i => Math.min(group.images.length - 1, i + 1))
-
-  // Portrait → narrow modal; landscape or no-image → wide modal
-  const isPortrait  = orientation === 'portrait'
-  const isLandscape = orientation === 'landscape' || !hasImgs
-  const maxW = isPortrait ? 'max-w-[480px]' : isLandscape ? 'max-w-[800px]' : 'max-w-[600px]'
-
-  // Shared image section JSX (inlined to avoid nested-component pattern)
-  const imageSection = (withOverlay: boolean) => (
-    <div className="relative flex items-center justify-center overflow-hidden bg-[#0a0a0a]">
-      {!hasImgs ? null : curFailed || !current?.image_url ? (
-        <div className="flex min-h-[200px] w-full items-center justify-center">
-          <ExpiredImage />
-        </div>
-      ) : (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          key={current.id}
-          src={current.image_url}
-          alt="Generated"
-          className="w-full object-contain"
-          style={{ maxHeight: '70vh' }}
-          onError={markFailed(activeIndex)}
-        />
-      )}
-
-      {/* Carousel arrows */}
-      {multi && activeIndex > 0 && (
-        <button onClick={goPrev} aria-label="Previous"
-          className="absolute left-2 top-1/2 z-20 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
-          <ChevronLeft size={16} />
-        </button>
-      )}
-      {multi && activeIndex < group.images.length - 1 && (
-        <button onClick={goNext} aria-label="Next"
-          className="absolute right-2 top-1/2 z-20 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
-          <ChevronRight size={16} />
-        </button>
-      )}
-
-      {/* Counter */}
-      {multi && (
-        <div className="absolute right-3 top-3 z-20 rounded bg-black/60 px-2 py-0.5 text-xs text-white/80">
-          {activeIndex + 1} / {group.images.length}
-        </div>
-      )}
-
-      {/* Gradient overlay (portrait only) */}
-      {withOverlay && (
-        <div className="absolute bottom-0 left-0 right-0 z-10 p-3" style={{ background: OVERLAY_GRADIENT }}>
-          <div className="mb-1 flex items-center justify-between gap-2">
-            <PlatformBadge platform={platform} />
-            <span className="text-xs text-zinc-400">{formatRelativeDate(group.created_at)}</span>
-          </div>
-          {caption && <p className="line-clamp-2 text-sm leading-snug text-white">{caption}</p>}
-        </div>
-      )}
-    </div>
-  )
-
-  return (
-    <Dialog open onOpenChange={open => { if (!open) onClose() }}>
-      <DialogContent
-        showCloseButton={false}
-        className={`w-full p-0 ring-0 border-[#262626] bg-[#141414] overflow-hidden ${maxW}`}
-      >
-        <DialogTitle className="sr-only">Generation detail</DialogTitle>
-
-        {/* Close button */}
-        <button onClick={onClose} aria-label="Close"
-          className="absolute right-3 top-3 z-30 flex h-8 w-8 items-center justify-center rounded-full text-[#71717a] transition-colors hover:bg-white/10 hover:text-white">
-          <X size={16} />
-        </button>
-
-        {/* Hidden img for orientation detection (fires before layout renders) */}
-        {orientation === 'unknown' && hasImgs && current?.image_url && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={current.image_url}
-            alt=""
-            className="pointer-events-none absolute -left-full -top-full h-0 w-0 opacity-0"
-            onLoad={detectOrientation}
-            onError={() => setOrientation('landscape')}
-          />
-        )}
-
-        {/* Skeleton while detecting */}
-        {orientation === 'unknown' && hasImgs ? (
-          <div>
-            <Skeleton className="h-64 w-full rounded-none bg-[#1e1e1e]" />
-            <div className="space-y-3 p-5">
-              <Skeleton className="h-5 w-32 rounded-full bg-[#1e1e1e]" />
-              <Skeleton className="h-4 w-full rounded bg-[#1e1e1e]" />
-              <Skeleton className="h-4 w-4/5 rounded bg-[#1e1e1e]" />
-            </div>
-          </div>
-
-        ) : isPortrait ? (
-          /* ── Portrait layout ── */
-          <div className="flex max-h-[90vh] flex-col overflow-y-auto">
-            {imageSection(true)}
-
-            {caption && (
-              <div
-                className="max-h-[200px] overflow-y-auto border-t border-[#262626] px-4 py-3"
-                style={{ userSelect: 'text', cursor: 'text' }}
-              >
-                <p className="text-sm leading-relaxed text-zinc-200 whitespace-pre-wrap">{caption}</p>
-              </div>
-            )}
-
-            <div className="flex gap-2 border-t border-[#262626] p-4">
-              {caption && <CopyBtn text={caption} />}
-              {hasCurrentImg && <DownloadBtn imageUrl={current!.image_url!} />}
-            </div>
-          </div>
-
-        ) : (
-          /* ── Landscape / no-image layout ── */
-          <div className="flex max-h-[90vh] flex-col lg:flex-row">
-            {hasImgs && (
-              <div className="lg:w-[60%]">
-                {imageSection(false)}
-              </div>
-            )}
-
-            <div className={`flex flex-col overflow-y-auto border-t border-[#262626] p-5 lg:border-l lg:border-t-0 ${hasImgs ? 'lg:w-[40%]' : 'w-full'}`}>
-              <div className="flex flex-wrap items-center gap-3">
-                <PlatformBadge platform={platform} />
-                <span className="text-xs text-zinc-500">{formatFullDate(group.created_at)}</span>
-              </div>
-
-              {caption ? (
-                <div
-                  className="mt-4 flex-1 overflow-y-auto text-sm leading-relaxed text-zinc-200 whitespace-pre-wrap"
-                  style={{ userSelect: 'text', cursor: 'text' }}
-                >
-                  {caption}
-                </div>
-              ) : (
-                <p className="mt-4 text-sm italic text-zinc-500">No caption for this post</p>
-              )}
-
-              {hashtags.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-1.5">
-                  {hashtags.map((tag, i) => (
-                    <span key={i} className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-xs text-indigo-400">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <div className="mt-5 flex flex-col gap-2">
-                {caption && <CopyBtn text={caption} fullWidth />}
-                {hasCurrentImg && <DownloadBtn imageUrl={current!.image_url!} fullWidth />}
-              </div>
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export default function LibraryClient() {
@@ -605,16 +546,17 @@ export default function LibraryClient() {
   const [meta,          setMeta]          = useState<LibraryMeta>({ total: 0, page: 1, has_more: false })
   const [loading,       setLoading]       = useState(true)
   const [error,         setError]         = useState<string | null>(null)
-  const [filter,        setFilter]        = useState<'all' | 'images' | 'captions'>('all')
-  const [selectedGroup, setSelectedGroup] = useState<GenerationGroup | null>(null)
-  const [dismissed,     setDismissed]     = useState(false)
-  const [loadingMore,   setLoadingMore]   = useState(false)
+  const [filter,         setFilter]         = useState<'all' | 'images' | 'captions'>('all')
+  const [selectedGroup,  setSelectedGroup]  = useState<GenerationGroup | null>(null)
+  const [loadingMore,    setLoadingMore]    = useState(false)
   const [token,         setToken]         = useState<string | null>(null)
   const [avatarError,   setAvatarError]   = useState(false)
+  const [searchQuery,   setSearchQuery]   = useState('')
+  const [searchOpen,    setSearchOpen]    = useState(false)
 
   const fetchLibrary = useCallback(async (jwt: string, page: number, append = false) => {
     const res = await fetch(
-      `${WORKER_URL}/api/library?character_id=${characterId}&type=all&page=${page}&limit=20`,
+      `${WORKER_URL}/api/library?character_id=${characterId}&type=all&page=${page}&limit=50`,
       { headers: { Authorization: `Bearer ${jwt}` } }
     )
     if (res.status === 401) throw new Error('UNAUTH')
@@ -677,12 +619,15 @@ export default function LibraryClient() {
     } catch { /* ignore */ }
   }
 
-  const allGroups      = groupGenerations(generations)
-  const filteredGroups = filter === 'all'
+  const allGroups = groupGenerations(generations)
+  const tabFiltered = filter === 'all'
     ? allGroups
     : filter === 'images'
-    ? allGroups.filter(g => g.images.length > 0)
-    : allGroups.filter(g => g.caption !== null)
+    ? allGroups.filter(g => g.images.length > 0 && g.images.some(img => img.image_url))
+    : allGroups.filter(g => g.caption !== null && !!g.caption?.text_output)
+  const filteredGroups = searchQuery.trim()
+    ? tabFiltered.filter(g => g.caption?.text_output?.toLowerCase().includes(searchQuery.toLowerCase()))
+    : tabFiltered
 
   // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
@@ -737,7 +682,7 @@ export default function LibraryClient() {
       <header className="border-b border-[#262626] bg-[#0a0a0a]">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-            <button onClick={() => router.push('/dashboard')} aria-label="Back"
+            <button onClick={() => router.push(`/dashboard/chat?id=${characterId}`)} aria-label="Back"
               className="shrink-0 text-lg text-[#71717a] transition-colors hover:text-white">←</button>
 
             {avatarUrl ? (
@@ -757,13 +702,13 @@ export default function LibraryClient() {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <Link href={`/dashboard/chat?id=${characterId}`}>
-              <Button size="sm" variant="outline" className="gap-1.5 border-[#262626] px-2.5 text-xs text-[#a1a1aa] hover:text-white sm:px-3">
-                <MessageCircle size={13} /> Chat
-              </Button>
-            </Link>
+            <Button variant="outline" size="icon"
+              className="bg-black text-white border-white hover:bg-zinc-900"
+              onClick={() => setSearchOpen(v => !v)}>
+              <Search className="h-4 w-4" />
+            </Button>
             <Link href={`/dashboard/settings?id=${characterId}`}>
-              <Button size="sm" variant="outline" className="gap-1.5 border-[#262626] px-2.5 text-xs text-[#a1a1aa] hover:text-white sm:px-3">
+              <Button size="sm" variant="outline" className="gap-1.5 bg-black text-white border-white hover:bg-zinc-900 hover:text-white hover:border-white px-2.5 text-xs sm:px-3">
                 <Settings size={13} /> Settings
               </Button>
             </Link>
@@ -776,8 +721,35 @@ export default function LibraryClient() {
         {/* ── Title row ── */}
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-white">Library</h2>
-          <span className="text-sm text-[#71717a]">{meta.total} post{meta.total !== 1 ? 's' : ''}</span>
+          <span className="text-sm text-[#71717a]">
+            {searchQuery.trim()
+              ? `${filteredGroups.length} result${filteredGroups.length !== 1 ? 's' : ''}`
+              : `${meta.total} post${meta.total !== 1 ? 's' : ''}`
+            }
+          </span>
         </div>
+
+        {/* ── Search ── */}
+        {searchOpen && (
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+            <input
+              autoFocus
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search captions..."
+              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-9 pr-9 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-zinc-500"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── Filter tabs ── (Issue 2) */}
         <Tabs value={filter} onValueChange={v => setFilter(v as 'all' | 'images' | 'captions')} className="mb-4">
@@ -798,38 +770,40 @@ export default function LibraryClient() {
           </TabsList>
         </Tabs>
 
-        {/* ── 30-day notice ── */}
-        {!dismissed && (
-          <div className="mb-5 flex items-center gap-3 rounded-lg border border-[#262626] bg-[#1a1a1a] px-4 py-3">
-            <Info size={14} className="shrink-0 text-[#71717a]" />
-            <span className="flex-1 text-xs text-[#71717a]">
-              Images are available for 30 days. Download to save permanently.
-            </span>
-            <button onClick={() => setDismissed(true)} aria-label="Dismiss"
-              className="shrink-0 text-[#71717a] transition-colors hover:text-white">
-              <X size={14} />
-            </button>
-          </div>
-        )}
-
         {/* ── Grid ── */}
         {filteredGroups.length === 0 ? (
-          <EmptyState characterId={characterId!} />
+          searchQuery.trim() ? (
+            <div className="flex min-h-[300px] flex-col items-center justify-center gap-3">
+              <p className="text-sm text-[#a1a1aa]">{`No results for "${searchQuery}"`}</p>
+              <button
+                onClick={() => setSearchQuery('')}
+                className="text-xs text-indigo-400 hover:text-indigo-300 underline"
+              >Clear</button>
+            </div>
+          ) : (
+            <EmptyState characterId={characterId!} />
+          )
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredGroups.map((group, i) => {
                 const key = group.correlation_id ?? `${group.created_at}-${i}`
-                return group.images.length > 0
+                if (filter === 'images') {
+                  return <ImageCard key={key} group={group} imageOnly onClick={() => setSelectedGroup(group)} />
+                }
+                const showAsCaption = filter === 'captions' || group.images.length === 0
+                return showAsCaption && group.caption
+                  ? <CaptionCard key={key} group={group} onClick={() => setSelectedGroup(group)} />
+                  : group.images.length > 0
                   ? <ImageCard key={key} group={group} onClick={() => setSelectedGroup(group)} />
-                  : <CaptionCard key={key} group={group} onClick={() => setSelectedGroup(group)} />
+                  : null
               })}
             </div>
 
             {meta.has_more && (
               <div className="mt-8 flex justify-center">
                 <Button onClick={loadMore} disabled={loadingMore} variant="outline"
-                  className="gap-2 border-[#262626] text-[#a1a1aa] hover:text-white">
+                  className="bg-black text-white border-white hover:bg-zinc-900 hover:text-white hover:border-white gap-2">
                   {loadingMore && <Loader2 size={14} className="animate-spin" />}
                   {loadingMore ? 'Loading…' : 'Load more'}
                 </Button>

@@ -288,7 +288,7 @@ export default function SettingsClient() {
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#0a0a0a]">
         <p className="text-sm text-red-400">{loadError ?? 'Character not found.'}</p>
         <Link href="/dashboard">
-          <Button variant="outline" size="sm" className="border-[#262626] text-[#a1a1aa] hover:text-white">
+          <Button variant="outline" size="sm" className="bg-black text-white border-white hover:bg-zinc-900 hover:text-white hover:border-white">
             ← Dashboard
           </Button>
         </Link>

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { Upload, ImageOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/browser'
 
@@ -73,6 +74,10 @@ export default function CreateCharacterPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [authChecked, setAuthChecked] = useState(false)
+  const [referenceFile, setReferenceFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [skipReference, setSkipReference] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -124,10 +129,25 @@ export default function CreateCharacterPage() {
         }),
       })
 
-      const json = await res.json() as { data?: unknown; error?: string }
+      const json = await res.json() as { data?: { id: string }; error?: string }
       if (!res.ok) { setError(json.error ?? 'Failed to create character.'); return }
 
-      router.push('/dashboard')
+      const newId = json.data?.id
+
+      if (referenceFile && newId) {
+        try {
+          const formData = new FormData()
+          formData.append('files', referenceFile)
+          formData.append('pose_types', JSON.stringify(['front']))
+          await fetch(`${workerUrl}/api/characters/${newId}/references`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${session.access_token}` },
+            body: formData,
+          })
+        } catch { /* navigate anyway */ }
+      }
+
+      router.push(newId ? `/dashboard/chat?id=${newId}` : '/dashboard')
     } catch {
       setError('Network error. Please try again.')
     } finally {
@@ -279,6 +299,75 @@ export default function CreateCharacterPage() {
                   <p className="mt-0.5 text-xs text-[#71717a]">{preset.description}</p>
                 </button>
               ))}
+            </div>
+          </section>
+
+          <section>
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-medium text-white">
+                  Reference Photo
+                  <span className="text-zinc-500 font-normal ml-2">(Optional — add later in Settings)</span>
+                </h3>
+                <p className="text-xs text-zinc-500 mt-1">Front portrait, clean background works best.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Upload card */}
+                <button
+                  type="button"
+                  onClick={() => { setSkipReference(false); fileInputRef.current?.click() }}
+                  className={`relative flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
+                    referenceFile && !skipReference
+                      ? 'border-indigo-500 bg-indigo-500/10'
+                      : 'border-[#262626] bg-[#141414] hover:border-[#404040]'
+                  }`}
+                >
+                  {previewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={previewUrl} alt="Preview" className="h-20 w-20 rounded-lg object-cover" />
+                  ) : (
+                    <>
+                      <Upload size={20} className="text-zinc-400" />
+                      <span className="text-sm text-zinc-400">Click to upload</span>
+                    </>
+                  )}
+                </button>
+                {/* Skip card */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSkipReference(true)
+                    if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null) }
+                    setReferenceFile(null)
+                  }}
+                  className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
+                    skipReference
+                      ? 'border-zinc-600 bg-zinc-800/20'
+                      : 'border-[#262626] bg-[#141414] hover:border-[#404040]'
+                  }`}
+                >
+                  <ImageOff size={20} className="text-zinc-500" />
+                  <div>
+                    <p className="text-sm text-zinc-400">Skip for now</p>
+                    <p className="text-xs text-zinc-600 mt-0.5">Add in Settings later</p>
+                  </div>
+                </button>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  if (previewUrl) URL.revokeObjectURL(previewUrl)
+                  setReferenceFile(file)
+                  setPreviewUrl(URL.createObjectURL(file))
+                  setSkipReference(false)
+                  e.target.value = ''
+                }}
+              />
             </div>
           </section>
 
