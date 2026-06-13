@@ -50,7 +50,7 @@ app.get('/health', (c) => {
 
 // Public R2 file serving — no auth required
 app.get('/files/*', async (c) => {
-  const path = c.req.param('*')
+  const path = c.req.path.slice('/files/'.length)
 
   if (!path) {
     return c.json({ error: 'No path specified' }, 400)
