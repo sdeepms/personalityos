@@ -7,13 +7,6 @@ import type { CharacterForPrompt } from '../services/prompt-builder'
 
 export const generate = new Hono<{ Bindings: Env; Variables: Variables }>()
 
-// ─────────────────────────────────────────────────────────────────────────────
-// REMOVE BEFORE PRODUCTION
-// Test router mounted WITHOUT auth middleware (see index.ts registration order).
-// Accepts user_id from request body for local Day 5 validation only.
-// ─────────────────────────────────────────────────────────────────────────────
-export const generateTest = new Hono<{ Bindings: Env }>()
-
 type Character = CharacterForPrompt & {
   id: string
   user_id: string
@@ -128,86 +121,3 @@ generate.post('/image', async (c) => {
   }
 })
 
-// REMOVE BEFORE PRODUCTION
-// POST /api/generate/test-image — no auth, user_id from body
-generateTest.post('/test-image', async (c) => {
-  let body: {
-    character_id?: string
-    image_description?: string
-    platform?: string
-    user_id?: string
-    correlation_id?: string
-  }
-  try {
-    body = await c.req.json()
-  } catch {
-    return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
-  }
-
-  const { character_id, image_description, platform, user_id, correlation_id } = body
-  if (!character_id || !image_description || !platform || !user_id) {
-    return c.json(
-      { error: 'character_id, image_description, platform, and user_id are required', code: 'BAD_REQUEST' },
-      400
-    )
-  }
-
-  const { data: character, error: charError } = await db(c.env)
-    .from('characters')
-    .select('id, user_id, name, visual_style_prompt, prompt_dna, reference_image_urls, reference_images_ready')
-    .eq('id', character_id)
-    .eq('user_id', user_id)
-    .single<Character>()
-
-  if (charError || !character) {
-    return c.json({ error: 'Character not found', code: 'CHARACTER_NOT_FOUND' }, 404)
-  }
-
-  if (character.reference_images_ready !== 1) {
-    return c.json(
-      { error: 'Upload a reference photo first', code: 'REFERENCE_IMAGES_REQUIRED' },
-      400
-    )
-  }
-
-  const assembled = assembleImagePrompt(character, image_description, platform)
-
-  let result
-  try {
-    result = await getImageProvider(c.env).generateImage(assembled.prompt, {
-      referenceImageUrl: assembled.reference_image_url ?? undefined,
-      aspectRatio: assembled.aspect_ratio,
-      negativePrompt: assembled.negative_prompt,
-      model: assembled.model,
-      userId: user_id,
-      characterId: character_id,
-    })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Generation failed'
-    return c.json({ error: message, code: 'GENERATION_FAILED' }, 500)
-  }
-
-  const { data: generation, error: insertError } = await db(c.env)
-    .from('generations')
-    .insert({
-      character_id,
-      user_id,
-      generation_type: 'image',
-      platform,
-      user_prompt: image_description,
-      correlation_id: correlation_id || null,
-      image_url: result.outputUrl,
-      provider: result.provider,
-      model_used: result.model,
-      generation_time_ms: result.durationMs,
-      status: 'completed',
-    })
-    .select('id')
-    .single()
-
-  if (insertError) {
-    return c.json({ data: { image_url: result.outputUrl, generation_id: null } })
-  }
-
-  return c.json({ data: { image_url: result.outputUrl, generation_id: generation.id } }, 201)
-})
