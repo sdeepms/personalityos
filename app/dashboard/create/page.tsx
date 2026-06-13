@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { Upload, Sparkles, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/browser'
 
@@ -73,6 +74,15 @@ export default function CreateCharacterPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [authChecked, setAuthChecked] = useState(false)
+  const [referenceFile, setReferenceFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [generateReference,   setGenerateReference]   = useState(false)
+  const [generatedPreviewUrl, setGeneratedPreviewUrl] = useState<string | null>(null)
+  const [generating,          setGenerating]          = useState(false)
+  const [createdCharacterId,  setCreatedCharacterId]  = useState<string | null>(null)
+  const [createdToken,        setCreatedToken]        = useState<string | null>(null)
+  const [validationError,     setValidationError]     = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -87,6 +97,33 @@ export default function CreateCharacterPage() {
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  async function generateImage(charId: string, authToken: string) {
+    const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL ?? 'http://localhost:8787'
+    setGeneratedPreviewUrl(null)
+    setGenerating(true)
+    try {
+      const res = await fetch(`${workerUrl}/api/generate/image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({
+          character_id:      charId,
+          image_description: 'professional portrait headshot, front facing',
+          platform:          'instagram',
+        }),
+      })
+      const data = await res.json() as { data?: { image_url: string } }
+      if (data.data?.image_url) {
+        setGeneratedPreviewUrl(data.data.image_url)
+      } else {
+        router.push(`/dashboard/chat?id=${charId}`)
+      }
+    } catch {
+      router.push(`/dashboard/chat?id=${charId}`)
+    } finally {
+      setGenerating(false)
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -124,10 +161,33 @@ export default function CreateCharacterPage() {
         }),
       })
 
-      const json = await res.json() as { data?: unknown; error?: string }
+      const json = await res.json() as { data?: { id: string }; error?: string }
       if (!res.ok) { setError(json.error ?? 'Failed to create character.'); return }
 
-      router.push('/dashboard')
+      const newId = json.data?.id
+
+      if (referenceFile && newId) {
+        try {
+          const formData = new FormData()
+          formData.append('files', referenceFile)
+          formData.append('pose_types', JSON.stringify(['front']))
+          await fetch(`${workerUrl}/api/characters/${newId}/references`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${session.access_token}` },
+            body: formData,
+          })
+        } catch { /* navigate anyway */ }
+      }
+
+      if (generateReference && !referenceFile && newId) {
+        setCreatedCharacterId(newId)
+        setCreatedToken(session.access_token)
+        setSubmitting(false)
+        await generateImage(newId, session.access_token)
+        return
+      }
+
+      router.push(newId ? `/dashboard/chat?id=${newId}` : '/dashboard')
     } catch {
       setError('Network error. Please try again.')
     } finally {
@@ -282,6 +342,114 @@ export default function CreateCharacterPage() {
             </div>
           </section>
 
+          <section>
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-medium text-white">
+                  Reference Photo
+                  <span className="text-zinc-500 font-normal ml-2">(Optional — add later in Settings)</span>
+                </h3>
+                <p className="text-xs text-zinc-500 mt-1">Front portrait, clean background works best.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Upload card */}
+                <button
+                  type="button"
+                  onClick={() => { setGenerateReference(false); fileInputRef.current?.click() }}
+                  className={`relative flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
+                    referenceFile && !generateReference
+                      ? 'border-indigo-500 bg-indigo-500/10'
+                      : 'border-[#262626] bg-[#141414] hover:border-[#404040]'
+                  }`}
+                >
+                  {previewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={previewUrl} alt="Preview" className="h-20 w-20 rounded-lg object-cover" />
+                  ) : (
+                    <>
+                      <Upload size={20} className="text-zinc-400" />
+                      <div>
+                        <p className="text-sm text-zinc-400">Upload Photo</p>
+                        <p className="text-xs text-zinc-600 mt-0.5">JPEG or PNG, max 10MB</p>
+                      </div>
+                    </>
+                  )}
+                </button>
+                {/* Generate card */}
+                {generatedPreviewUrl ? (
+                  <div className="relative rounded-lg overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={generatedPreviewUrl} alt="Generated preview" className="w-full aspect-square object-cover rounded-lg" />
+                    <button
+                      type="button"
+                      onClick={() => generateImage(createdCharacterId!, createdToken!)}
+                      className="absolute bottom-2 right-2 h-7 w-7 rounded-full bg-black/70 border border-white/30 text-white flex items-center justify-center hover:bg-black"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : generating ? (
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-indigo-500 bg-indigo-950/30 p-6 text-center">
+                    <div className="h-5 w-5 rounded-full border-2 border-indigo-400/30 border-t-indigo-400 animate-spin" />
+                    <p className="text-xs text-zinc-500">Generating…</p>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!form.name.trim() || !form.domain.trim()) {
+                        setValidationError('Please fill in Character Name and Domain first.')
+                        return
+                      }
+                      setValidationError(null)
+                      setGenerateReference(true)
+                      if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null) }
+                      setReferenceFile(null)
+                    }}
+                    className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
+                      generateReference
+                        ? 'border-indigo-500 bg-indigo-950/30'
+                        : 'border-[#262626] bg-[#141414] hover:border-[#404040]'
+                    }`}
+                  >
+                    <Sparkles size={20} className={generateReference ? 'text-indigo-400' : 'text-zinc-500'} />
+                    <div>
+                      <p className="text-sm text-zinc-400">Generate from DNA</p>
+                      <p className="text-xs text-zinc-600 mt-0.5">AI creates a face from your character description</p>
+                    </div>
+                  </button>
+                )}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  if (previewUrl) URL.revokeObjectURL(previewUrl)
+                  setReferenceFile(file)
+                  setPreviewUrl(URL.createObjectURL(file))
+                  setGenerateReference(false)
+                  e.target.value = ''
+                }}
+              />
+              {validationError && (
+                <p className="text-xs text-red-400 mt-2">{validationError}</p>
+              )}
+              {generatedPreviewUrl && (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/dashboard/chat?id=${createdCharacterId}`)}
+                  className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-500 transition-colors"
+                >
+                  Continue to Chat →
+                </button>
+              )}
+            </div>
+          </section>
+
           {error && (
             <p className="rounded-lg border border-red-900/50 bg-red-950/30 px-3 py-2 text-sm text-red-400">
               {error}
@@ -290,7 +458,7 @@ export default function CreateCharacterPage() {
 
           <Button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || generating || !!generatedPreviewUrl}
             className="w-full bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50"
             size="lg"
           >
