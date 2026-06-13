@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Upload, ImageOff } from 'lucide-react'
+import { Upload, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/browser'
 
@@ -76,7 +76,7 @@ export default function CreateCharacterPage() {
   const [authChecked, setAuthChecked] = useState(false)
   const [referenceFile, setReferenceFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [skipReference, setSkipReference] = useState(false)
+  const [generateReference, setGenerateReference] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -145,6 +145,21 @@ export default function CreateCharacterPage() {
             body: formData,
           })
         } catch { /* navigate anyway */ }
+      }
+
+      if (generateReference && !referenceFile && newId) {
+        fetch(`${workerUrl}/api/generate/image`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            character_id: newId,
+            image_description: 'professional portrait headshot',
+            platform: 'instagram',
+          }),
+        }).catch(() => { /* fire and forget */ })
       }
 
       router.push(newId ? `/dashboard/chat?id=${newId}` : '/dashboard')
@@ -315,9 +330,9 @@ export default function CreateCharacterPage() {
                 {/* Upload card */}
                 <button
                   type="button"
-                  onClick={() => { setSkipReference(false); fileInputRef.current?.click() }}
+                  onClick={() => { setGenerateReference(false); fileInputRef.current?.click() }}
                   className={`relative flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
-                    referenceFile && !skipReference
+                    referenceFile && !generateReference
                       ? 'border-indigo-500 bg-indigo-500/10'
                       : 'border-[#262626] bg-[#141414] hover:border-[#404040]'
                   }`}
@@ -328,28 +343,31 @@ export default function CreateCharacterPage() {
                   ) : (
                     <>
                       <Upload size={20} className="text-zinc-400" />
-                      <span className="text-sm text-zinc-400">Click to upload</span>
+                      <div>
+                        <p className="text-sm text-zinc-400">Upload Photo</p>
+                        <p className="text-xs text-zinc-600 mt-0.5">JPEG or PNG, max 10MB</p>
+                      </div>
                     </>
                   )}
                 </button>
-                {/* Skip card */}
+                {/* Generate card */}
                 <button
                   type="button"
                   onClick={() => {
-                    setSkipReference(true)
+                    setGenerateReference(true)
                     if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null) }
                     setReferenceFile(null)
                   }}
                   className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
-                    skipReference
-                      ? 'border-zinc-600 bg-zinc-800/20'
+                    generateReference
+                      ? 'border-indigo-500 bg-indigo-950/30'
                       : 'border-[#262626] bg-[#141414] hover:border-[#404040]'
                   }`}
                 >
-                  <ImageOff size={20} className="text-zinc-500" />
+                  <Sparkles size={20} className={generateReference ? 'text-indigo-400' : 'text-zinc-500'} />
                   <div>
-                    <p className="text-sm text-zinc-400">Skip for now</p>
-                    <p className="text-xs text-zinc-600 mt-0.5">Add in Settings later</p>
+                    <p className="text-sm text-zinc-400">Generate from DNA</p>
+                    <p className="text-xs text-zinc-600 mt-0.5">AI creates a face from your character description</p>
                   </div>
                 </button>
               </div>
@@ -364,7 +382,7 @@ export default function CreateCharacterPage() {
                   if (previewUrl) URL.revokeObjectURL(previewUrl)
                   setReferenceFile(file)
                   setPreviewUrl(URL.createObjectURL(file))
-                  setSkipReference(false)
+                  setGenerateReference(false)
                   e.target.value = ''
                 }}
               />
