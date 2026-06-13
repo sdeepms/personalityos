@@ -1064,7 +1064,7 @@ export default function ChatClient() {
       <div className="flex h-screen flex-col bg-[#0a0a0a]">
         {/* Skeleton header */}
         <header className="flex-shrink-0 bg-[#0a0a0a]">
-          <div className="mx-auto flex w-full max-w-4xl items-center gap-3 px-4 py-3 sm:px-6 animate-pulse">
+          <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-3 sm:px-6 animate-pulse">
             <div className="h-8 w-8 rounded-full bg-[#262626]" />
             <div className="flex-1 space-y-1.5">
               <div className="h-4 w-32 rounded bg-[#262626]" />
@@ -1073,7 +1073,7 @@ export default function ChatClient() {
           </div>
         </header>
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-4xl space-y-4 px-4 py-4 sm:px-6">
+          <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-4 sm:px-6">
             {[0, 1, 2].map(i => <HistoryCardSkeleton key={i} />)}
           </div>
         </main>
@@ -1122,7 +1122,7 @@ export default function ChatClient() {
 
       {/* ── Header ── */}
       <header className="flex-shrink-0 bg-[#0a0a0a]">
-        <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
               onClick={() => router.push('/dashboard')}
@@ -1169,7 +1169,7 @@ export default function ChatClient() {
       {/* ── No reference image banner ── */}
       {noRefImage && (
         <div className="flex-shrink-0 border-b border-yellow-900/40 bg-yellow-950/20">
-          <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-2 px-4 py-2 sm:px-6">
+          <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-2 px-4 py-2 sm:px-6">
             <span className="text-xs text-yellow-400">For consistent images, add a reference photo.</span>
             <Link
               href={`/dashboard/settings?id=${character.id}`}
@@ -1181,7 +1181,7 @@ export default function ChatClient() {
 
       {/* ── Scrollable chat area ── */}
       <main ref={scrollRef} className="flex-1 overflow-y-auto chat-scrollbar">
-        <div className="mx-auto w-full max-w-4xl px-4 py-4 sm:px-6">
+        <div className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6">
           {!hasContent ? (
             <div className="flex min-h-[200px] items-center justify-center">
               <p className="text-sm text-[#71717a]">Ask {character.name} to create content →</p>
@@ -1263,7 +1263,7 @@ export default function ChatClient() {
 
       {/* ── Intent shortcuts ── */}
       <div className="flex-shrink-0 bg-[#0a0a0a]">
-        <div className="mx-auto w-full max-w-4xl px-4 pt-2 sm:px-6">
+        <div className="mx-auto w-full max-w-5xl px-4 pt-2 sm:px-6">
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
             {intentShortcuts.map(intent => (
               <button key={intent}
@@ -1288,7 +1288,7 @@ export default function ChatClient() {
 
       {/* ── Platform shortcuts ── */}
       <div className="flex-shrink-0 bg-[#0a0a0a]">
-        <div className="mx-auto w-full max-w-4xl px-4 py-2 sm:px-6">
+        <div className="mx-auto w-full max-w-5xl px-4 py-2 sm:px-6">
           <div className="flex flex-wrap gap-1.5">
             {PLATFORMS.map(p => (
               <button
@@ -1310,7 +1310,7 @@ export default function ChatClient() {
 
       {/* ── Input area ── */}
       <div className="flex-shrink-0 bg-[#0a0a0a]">
-        <div className="mx-auto w-full max-w-4xl px-4 py-3 sm:px-6">
+        <div className="mx-auto w-full max-w-5xl px-4 py-3 sm:px-6">
           <div className="flex items-end gap-2 sm:gap-3">
             {avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element

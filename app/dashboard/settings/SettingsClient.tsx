@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/browser'
 
@@ -92,6 +93,7 @@ export default function SettingsClient() {
   const [identitySaving, setIdentitySaving] = useState(false)
   const [identitySaved, setIdentitySaved] = useState(false)
   const [identityError, setIdentityError] = useState<string | null>(null)
+  const [originalIdentity, setOriginalIdentity] = useState({ name: '', domain: '', gender: '', age_range: '', nationality: '', style_preset: '' })
 
   // ── Section 2: Reference Images ────────────────────────────────────────────
   const [files, setFiles] = useState<FileEntry[]>([])
@@ -103,10 +105,11 @@ export default function SettingsClient() {
 
   // ── Section 3: Style Controls ──────────────────────────────────────────────
   const [styleColorPalette, setStyleColorPalette] = useState('')
-  const [styleModel, setStyleModel] = useState('flux-dev')
+  const [styleModel, setStyleModel] = useState('nano-banana-edit')
   const [styleSaving, setStyleSaving] = useState(false)
   const [styleSaved, setStyleSaved] = useState(false)
   const [styleError, setStyleError] = useState<string | null>(null)
+  const [originalStyle, setOriginalStyle] = useState({ colorPalette: '', styleModel: 'nano-banana-edit' })
 
   useEffect(() => {
     if (!characterId) { setLoadError('No character ID.'); setLoading(false); return }
@@ -130,10 +133,21 @@ export default function SettingsClient() {
         setIdentityAgeRange(c.age_range ?? '')
         setIdentityNationality(c.nationality ?? '')
         setIdentityStylePreset(c.style_preset ?? '')
+        setOriginalIdentity({
+          name: c.name ?? '',
+          domain: c.domain ?? '',
+          gender: c.gender ?? '',
+          age_range: c.age_range ?? '',
+          nationality: c.nationality ?? '',
+          style_preset: c.style_preset ?? '',
+        })
         try {
           const dna: PromptDna = JSON.parse(c.prompt_dna ?? '{}')
-          setStyleColorPalette(dna.color_palette ?? '')
-          setStyleModel(dna.provider_overrides?.muapi?.model ?? 'flux-dev')
+          const loadedPalette = dna.color_palette ?? ''
+          const loadedModel   = dna.provider_overrides?.muapi?.model ?? 'nano-banana-edit'
+          setStyleColorPalette(loadedPalette)
+          setStyleModel(loadedModel)
+          setOriginalStyle({ colorPalette: loadedPalette, styleModel: loadedModel })
         } catch { /* leave defaults */ }
       } catch {
         setLoadError('Failed to load character.')
@@ -168,6 +182,14 @@ export default function SettingsClient() {
       const json = await res.json() as { data?: Character; error?: string }
       if (!res.ok) { setIdentityError(json.error ?? 'Save failed.'); return }
       if (json.data) setCharacter(json.data)
+      setOriginalIdentity({
+        name: identityName,
+        domain: identityDomain,
+        gender: identityGender,
+        age_range: identityAgeRange,
+        nationality: identityNationality,
+        style_preset: identityStylePreset,
+      })
       setIdentitySaved(true)
       setTimeout(() => setIdentitySaved(false), 3000)
     } catch {
@@ -257,6 +279,7 @@ export default function SettingsClient() {
       const json = await res.json() as { data?: Character; error?: string }
       if (!res.ok) { setStyleError(json.error ?? 'Save failed.'); return }
       if (json.data) setCharacter(json.data)
+      setOriginalStyle({ colorPalette: styleColorPalette, styleModel })
       setStyleSaved(true)
       setTimeout(() => setStyleSaved(false), 3000)
     } catch {
@@ -265,6 +288,18 @@ export default function SettingsClient() {
       setStyleSaving(false)
     }
   }
+
+  const identityDirty =
+    identityName       !== originalIdentity.name        ||
+    identityDomain     !== originalIdentity.domain      ||
+    identityGender     !== originalIdentity.gender      ||
+    identityAgeRange   !== originalIdentity.age_range   ||
+    identityNationality !== originalIdentity.nationality ||
+    identityStylePreset !== originalIdentity.style_preset
+
+  const styleDirty =
+    styleColorPalette !== originalStyle.colorPalette ||
+    styleModel        !== originalStyle.styleModel
 
   // Parse existing reference images for thumbnails
   let existingRefs: ReferenceImage[] = []
@@ -301,7 +336,7 @@ export default function SettingsClient() {
 
       {/* Header */}
       <header className="sticky top-0 z-10 border-b border-[#262626] bg-[#0a0a0a]">
-        <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
           <Link
             href={`/dashboard/chat?id=${character.id}`}
             className="shrink-0 text-[#71717a] transition-colors hover:text-white"
@@ -315,7 +350,7 @@ export default function SettingsClient() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-2xl space-y-10 px-4 py-8">
+      <main className="mx-auto max-w-5xl space-y-10 px-4 py-8">
 
         {/* ── Section 1: Reference Photos ─────────────────────────────────── */}
         <section>
@@ -324,38 +359,50 @@ export default function SettingsClient() {
             Used to keep {character.name}&apos;s appearance consistent across images.
           </p>
 
-          {/* Existing images */}
-          {existingRefs.length > 0 && (
-            <div className="mb-5">
-              <p className="mb-2 text-xs font-medium text-[#71717a]">Current photos</p>
-              <div className="flex flex-wrap gap-2">
-                {existingRefs.map((ref, i) => (
-                  <div key={i} className="relative">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`${WORKER_URL}/files/${ref.url}`}
-                      alt={`Reference ${i + 1}`}
-                      className="h-20 w-20 rounded-lg border border-[#262626] object-cover"
-                    />
-                    {ref.is_primary && (
-                      <span className="absolute bottom-1 left-1 rounded bg-indigo-600/80 px-1 py-0.5 text-[9px] font-medium text-white">
-                        Primary
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <p className="mt-2 text-xs text-[#555]">Uploading new photos will replace these.</p>
+          {/* Photos row: existing thumbnails + add card */}
+          <div className="mb-4">
+            <div className="flex flex-row flex-wrap gap-3">
+              {existingRefs.map((ref, i) => (
+                <div key={i} className="relative flex-shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`${WORKER_URL}/files/${ref.url}`}
+                    alt={`Reference ${i + 1}`}
+                    className="h-32 w-32 rounded-lg border border-zinc-700 object-cover object-top"
+                  />
+                  {ref.is_primary && (
+                    <span className="absolute bottom-1 left-1 rounded bg-indigo-600/80 px-1 py-0.5 text-[9px] font-medium text-white">
+                      Primary
+                    </span>
+                  )}
+                </div>
+              ))}
+              {files.length < 5 && (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-32 w-32 rounded-lg border-2 border-dashed border-zinc-700 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-indigo-500 hover:bg-indigo-500/5 transition-all flex-shrink-0"
+                >
+                  <span className="text-2xl text-zinc-600">+</span>
+                  <span className="text-xs text-zinc-600">Add photo</span>
+                </div>
+              )}
             </div>
-          )}
-
-          <div className="mb-4 flex gap-3 rounded-lg border border-indigo-500/20 bg-indigo-500/5 px-4 py-3">
-            <span className="shrink-0 text-indigo-400">💡</span>
-            <p className="text-sm text-[#a1a1aa]">
-              <span className="font-medium text-indigo-300">Tip:</span>{' '}
-              A clear front-facing photo with good lighting gives the best results.
-            </p>
+            {existingRefs.length > 0 && (
+              <p className="mt-2 text-xs text-[#555]">Uploading new photos will replace these.</p>
+            )}
           </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/jpeg,image/png"
+            className="hidden"
+            onChange={e => {
+              if (e.target.files) addFiles(Array.from(e.target.files))
+              e.target.value = ''
+            }}
+          />
 
           {uploadSaved && (
             <div className="mb-4 flex items-center gap-3 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3">
@@ -363,41 +410,6 @@ export default function SettingsClient() {
               <p className="text-sm font-medium text-green-300">
                 Photos saved. {character.name} is ready to generate.
               </p>
-            </div>
-          )}
-
-          {files.length < 5 && (
-            <div
-              onDragOver={e => { e.preventDefault(); setDragging(true) }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={e => {
-                e.preventDefault()
-                setDragging(false)
-                if (e.dataTransfer.files) addFiles(Array.from(e.dataTransfer.files))
-              }}
-              onClick={() => fileInputRef.current?.click()}
-              className={`mb-4 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 transition-colors ${
-                dragging
-                  ? 'border-indigo-500 bg-indigo-500/10'
-                  : 'border-[#262626] bg-[#0a0a0a] hover:border-[#404040] hover:bg-[#141414]'
-              }`}
-            >
-              <div className="mb-2 select-none text-3xl">📷</div>
-              <p className="text-sm font-medium text-white">Drop photos here, or click to browse</p>
-              <p className="mt-1 text-xs text-[#71717a]">
-                JPEG or PNG · Max 10 MB · Up to {5 - files.length} more
-              </p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept="image/jpeg,image/png"
-                className="hidden"
-                onChange={e => {
-                  if (e.target.files) addFiles(Array.from(e.target.files))
-                  e.target.value = ''
-                }}
-              />
             </div>
           )}
 
@@ -532,19 +544,20 @@ export default function SettingsClient() {
               <p className="text-sm text-red-400">{identityError}</p>
             </div>
           )}
-          {identitySaved && (
-            <div className="mt-4 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2">
-              <p className="text-sm text-green-300">Identity saved.</p>
-            </div>
-          )}
-
-          <Button
-            onClick={saveIdentity}
-            disabled={identitySaving}
-            className="mt-5 bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50"
-          >
-            {identitySaving ? 'Saving…' : 'Save Identity'}
-          </Button>
+          <div className="mt-5 flex items-center gap-3">
+            <Button
+              disabled={!identityDirty || identitySaving}
+              onClick={saveIdentity}
+              className={`bg-indigo-600 text-white hover:bg-indigo-500 ${(!identityDirty || identitySaving) ? 'opacity-40 cursor-not-allowed' : ''}`}
+            >
+              {identitySaving ? 'Saving…' : 'Save Identity'}
+            </Button>
+            {identitySaved && (
+              <div className="h-6 w-6 rounded-full bg-white flex items-center justify-center animate-in fade-in duration-200">
+                <Check className="h-3.5 w-3.5 text-green-500" />
+              </div>
+            )}
+          </div>
         </section>
 
         <hr className="border-[#1f1f1f]" />
@@ -572,7 +585,8 @@ export default function SettingsClient() {
                 onChange={e => setStyleModel(e.target.value)}
                 className="w-full rounded-lg border border-[#262626] bg-[#141414] px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
               >
-                <option value="flux-dev">flux-dev — high quality, slower</option>
+                <option value="nano-banana-edit">nano-banana-edit — with reference image (recommended)</option>
+                <option value="flux-dev">flux-dev — high quality, no reference</option>
                 <option value="flux-schnell">flux-schnell — faster, lighter</option>
               </select>
             </div>
@@ -583,19 +597,20 @@ export default function SettingsClient() {
               <p className="text-sm text-red-400">{styleError}</p>
             </div>
           )}
-          {styleSaved && (
-            <div className="mt-4 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2">
-              <p className="text-sm text-green-300">Style saved.</p>
-            </div>
-          )}
-
-          <Button
-            onClick={saveStyle}
-            disabled={styleSaving}
-            className="mt-5 bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50"
-          >
-            {styleSaving ? 'Saving…' : 'Save Style'}
-          </Button>
+          <div className="mt-5 flex items-center gap-3">
+            <Button
+              disabled={!styleDirty || styleSaving}
+              onClick={saveStyle}
+              className={`bg-indigo-600 text-white hover:bg-indigo-500 ${(!styleDirty || styleSaving) ? 'opacity-40 cursor-not-allowed' : ''}`}
+            >
+              {styleSaving ? 'Saving…' : 'Save Style'}
+            </Button>
+            {styleSaved && (
+              <div className="h-6 w-6 rounded-full bg-white flex items-center justify-center animate-in fade-in duration-200">
+                <Check className="h-3.5 w-3.5 text-green-500" />
+              </div>
+            )}
+          </div>
         </section>
 
         <div className="pb-8" />

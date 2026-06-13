@@ -429,7 +429,7 @@ function LibraryModal({ group, showImage, onClose }: { group: GenerationGroup; s
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={imageUrl}
+              src={imageUrl ?? undefined}
               alt="Generated"
               className="w-full h-full object-cover"
             />
@@ -658,7 +658,7 @@ export default function LibraryClient() {
     return (
       <div className="min-h-screen bg-[#0a0a0a]">
         <header className="border-b border-[#262626] bg-[#0a0a0a]">
-          <div className="mx-auto flex w-full max-w-6xl animate-pulse items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <div className="mx-auto flex w-full max-w-5xl animate-pulse items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-full bg-[#262626]" />
               <div className="space-y-1.5">
@@ -672,7 +672,7 @@ export default function LibraryClient() {
             </div>
           </div>
         </header>
-        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+        <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
           <div className="mb-6 flex animate-pulse items-center justify-between">
             <div className="h-6 w-20 rounded bg-[#262626]" />
             <div className="h-5 w-16 rounded bg-[#262626]" />
@@ -704,7 +704,7 @@ export default function LibraryClient() {
 
       {/* ── Header ── */}
       <header className="border-b border-[#262626] bg-[#0a0a0a]">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button onClick={() => router.push(`/dashboard/chat?id=${characterId}`)} aria-label="Back"
               className="shrink-0 text-lg text-[#71717a] transition-colors hover:text-white">←</button>
@@ -735,7 +735,7 @@ export default function LibraryClient() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
 
         {/* ── Title row ── */}
         <div className="mb-5 flex items-center justify-between">
