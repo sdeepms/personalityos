@@ -10,7 +10,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createClient } from '@/lib/supabase/browser'
 
 const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL ?? 'http://localhost:8787'
@@ -552,7 +551,6 @@ export default function LibraryClient() {
   const [token,         setToken]         = useState<string | null>(null)
   const [avatarError,   setAvatarError]   = useState(false)
   const [searchQuery,   setSearchQuery]   = useState('')
-  const [searchOpen,    setSearchOpen]    = useState(false)
 
   const fetchLibrary = useCallback(async (jwt: string, page: number, append = false) => {
     const res = await fetch(
@@ -702,11 +700,6 @@ export default function LibraryClient() {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <Button variant="outline" size="icon"
-              className="bg-black text-white border-white hover:bg-zinc-900"
-              onClick={() => setSearchOpen(v => !v)}>
-              <Search className="h-4 w-4" />
-            </Button>
             <Link href={`/dashboard/settings?id=${characterId}`}>
               <Button size="sm" variant="outline" className="gap-1.5 bg-black text-white border-white hover:bg-zinc-900 hover:text-white hover:border-white px-2.5 text-xs sm:px-3">
                 <Settings size={13} /> Settings
@@ -729,46 +722,38 @@ export default function LibraryClient() {
           </span>
         </div>
 
-        {/* ── Search ── */}
-        {searchOpen && (
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+        {/* ── Filter tabs + inline search ── */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
+            {(['all', 'images', 'captions'] as const).map(tab => (
+              <button key={tab}
+                onClick={() => setFilter(tab)}
+                className={`px-3 py-1 rounded-md text-sm capitalize transition-colors ${
+                  filter === tab
+                    ? 'bg-zinc-700 text-white'
+                    : 'text-zinc-400 hover:text-white'
+                }`}>
+                {tab}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
             <input
-              autoFocus
+              type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search captions..."
-              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-9 pr-9 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-zinc-500"
-            />
+              className="w-full h-9 bg-zinc-900 border border-zinc-800 rounded-lg pl-8 pr-8 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors" />
             {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
-              >
-                <X className="h-4 w-4" />
+              <button onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white">
+                <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
-        )}
-
-        {/* ── Filter tabs ── (Issue 2) */}
-        <Tabs value={filter} onValueChange={v => setFilter(v as 'all' | 'images' | 'captions')} className="mb-4">
-          <TabsList
-            className="h-9 gap-0 rounded-[8px] border border-[#262626] p-[3px]"
-            style={{ background: '#1a1a1a' }}
-          >
-            {(['all', 'images', 'captions'] as const).map(v => (
-              <TabsTrigger
-                key={v}
-                value={v}
-                className="text-xs [&[data-state=active]]:rounded-[6px] [&[data-state=active]]:bg-[#262626] [&[data-state=active]]:text-white [&[data-state=inactive]]:text-[#a1a1aa]"
-                style={{ color: filter === v ? '#ffffff' : '#a1a1aa' }}
-              >
-                {v.charAt(0).toUpperCase() + v.slice(1)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        </div>
 
         {/* ── Grid ── */}
         {filteredGroups.length === 0 ? (
