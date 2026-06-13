@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { RefreshCw, Share2, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { RefreshCw, Share2, Download, Copy, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/browser'
 
@@ -98,6 +98,15 @@ const ASPECT_LABEL: Record<string, string> = {
   general:   '1:1',
 }
 
+const IMAGE_PANEL_WIDTH: Record<string, string> = {
+  instagram: 'w-64',
+  linkedin:  'w-52',
+  x:         'w-72',
+  story:     'w-36',
+  carousel:  'w-64',
+  general:   'w-64',
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getInitials(name: string) {
@@ -123,7 +132,7 @@ function IconBtn({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className="flex h-7 w-7 items-center justify-center rounded-full border border-[#2a2a2a] text-[#71717a] transition-colors hover:border-[#404040] hover:text-white disabled:opacity-40"
+      className="flex h-7 w-7 items-center justify-center rounded-full border border-white bg-black text-white transition-colors hover:bg-zinc-900 hover:border-white disabled:opacity-40"
     >
       <span className={spinning ? 'animate-spin' : ''}>{children}</span>
     </button>
@@ -303,6 +312,10 @@ function GenerationCard({
 
   const anyBusy = captionRegenerating || imageRegenerating || sending
 
+  const displayHashtags = gen.hashtags.length > 0
+    ? gen.hashtags.map(t => t.startsWith('#') ? t : `#${t}`)
+    : (gen.caption.match(/#\w+/g) ?? [])
+
   async function copyCaption() {
     try {
       await navigator.clipboard.writeText(gen.caption)
@@ -427,53 +440,23 @@ function GenerationCard({
     )
   }
 
-  // ── Image panel content ───────────────────────────────────────────────────
+  // ── Image panel content (image only — no buttons) ────────────────────────
   const imagePanelContent = (() => {
     if (gen.imageLoading) return <ImageSkeleton platform={gen.platform} />
 
     if (gen.imageUrl) return (
-      <>
-        <div className="overflow-hidden rounded-lg">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={gen.imageUrl}
-            alt="Generated"
-            className="w-full cursor-pointer object-cover transition-all duration-200 hover:opacity-90 hover:scale-[1.01]"
-            onClick={() => onImageClick?.({
-              url:       gen.imageUrl!,
-              platform:  gen.platform,
-              caption:   gen.caption,
-              createdAt: gen.createdAt,
-            })}
-          />
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-xs text-[#71717a]">{ASPECT_LABEL[gen.platform] ?? '1:1'}</span>
-            {gen.imageTimeS && (
-              <span className="text-[10px] text-[#3a3a3a]">Generated in {gen.imageTimeS}s</span>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5">
-            <IconBtn onClick={shareImage} title={linkCopied ? 'Link copied!' : 'Share'}>
-              {linkCopied
-                ? <span className="text-[10px] font-medium text-green-400">✓</span>
-                : <Share2 size={13} />
-              }
-            </IconBtn>
-            <IconBtn onClick={regenerateImage} disabled={anyBusy} title="Regenerate image" spinning={imageRegenerating}>
-              <RefreshCw size={13} />
-            </IconBtn>
-            <IconBtn onClick={downloadImage} title="Download image">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-            </IconBtn>
-          </div>
-        </div>
-      </>
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={gen.imageUrl}
+        alt="Generated"
+        className="w-full h-full object-cover cursor-pointer transition-all duration-200 hover:opacity-90 hover:scale-[1.01]"
+        onClick={() => onImageClick?.({
+          url:       gen.imageUrl!,
+          platform:  gen.platform,
+          caption:   gen.caption,
+          createdAt: gen.createdAt,
+        })}
+      />
     )
 
     if (gen.imageFailed) return (
@@ -497,70 +480,139 @@ function GenerationCard({
       </div>
     )
 
-    if (mode === 'history') return (
-      <div className="flex items-center justify-center rounded-lg border border-dashed border-[#1e1e1e] p-8">
-        <p className="text-xs text-[#3a3a3a]">Image not available</p>
-      </div>
-    )
-
     return null
   })()
 
-  const showImagePanel = mode === 'history' || gen.imageLoading || !!gen.imageUrl || gen.imageFailed || gen.noReferenceImage
+  const showImagePanel = gen.imageLoading || !!gen.imageUrl || gen.imageFailed || gen.noReferenceImage
+
+  // Caption-only card (no image panel)
+  if (!showImagePanel) {
+    return (
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+        <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+          <PlatformBadge platform={gen.platform} />
+          {gen.captionTimeS && (
+            <span className="text-[10px] text-[#3a3a3a]">Generated in {gen.captionTimeS}s</span>
+          )}
+        </div>
+        {gen.caption ? (
+          <div
+            className="text-sm leading-relaxed text-zinc-200 overflow-y-auto chat-scrollbar"
+            style={{ maxHeight: '200px', userSelect: 'text', cursor: 'text' }}
+          >
+            {gen.caption}
+          </div>
+        ) : (
+          <p className="text-sm italic text-[#3a3a3a]">No caption available.</p>
+        )}
+        <div className="mt-3 flex items-center justify-end gap-1.5">
+          <IconBtn onClick={copyCaption} title={copied ? 'Copied!' : 'Copy caption'}>
+            {copied
+              ? <span className="text-[10px] font-medium text-green-400">✓</span>
+              : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+            }
+          </IconBtn>
+          <IconBtn onClick={regenerateCaption} disabled={anyBusy} title="Regenerate caption" spinning={captionRegenerating}>
+            <RefreshCw size={13} />
+          </IconBtn>
+        </div>
+      </div>
+    )
+  }
+
+  const panelWidth = IMAGE_PANEL_WIDTH[gen.platform] ?? 'w-64'
 
   return (
-    <div className="rounded-xl border border-[#262626] bg-[#141414] overflow-hidden">
-      <div className="flex flex-col sm:flex-row">
+    <div className="flex flex-row rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900/50" style={{ height: '280px' }}>
 
-        {/* LEFT — image (40%) */}
-        {showImagePanel && (
-          <div className="flex-[2] p-4 flex flex-col gap-2 border-b border-[#262626] sm:border-b-0 sm:border-r">
-            {imagePanelContent}
+      {/* LEFT — image, half width */}
+      <div className="relative w-1/2 flex-shrink-0 overflow-hidden">
+        {imagePanelContent}
+        {gen.imageUrl && (
+          <div className="absolute bottom-2 right-2 z-10 flex gap-1.5">
+            <button
+              onClick={downloadImage}
+              title="Download image"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-black/70 border border-white/30 text-white hover:bg-black hover:border-white"
+            >
+              <Download className="h-3 w-3" />
+            </button>
+            <button
+              onClick={regenerateImage}
+              disabled={anyBusy}
+              title="Regenerate image"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-black/70 border border-white/30 text-white hover:bg-black hover:border-white disabled:opacity-40"
+            >
+              <RefreshCw className={`h-3 w-3 ${imageRegenerating ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={shareImage}
+              title={linkCopied ? 'Link copied!' : 'Share'}
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-black/70 border border-white/30 text-white hover:bg-black hover:border-white"
+            >
+              {linkCopied
+                ? <span className="text-[9px] font-medium text-green-400">✓</span>
+                : <Share2 className="h-3 w-3" />
+              }
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT — caption panel */}
+      <div className="w-1/2 flex flex-col overflow-hidden p-4 gap-2 border-l border-zinc-800">
+
+        {/* a) Badge + timing */}
+        <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
+          <PlatformBadge platform={gen.platform} />
+          {gen.captionTimeS && (
+            <span className="text-[10px] text-[#3a3a3a]">Generated in {gen.captionTimeS}s</span>
+          )}
+        </div>
+
+        {/* b) Caption — scrollable, selectable */}
+        {gen.caption ? (
+          <div
+            className="flex-1 min-h-0 overflow-y-auto text-sm text-zinc-200 leading-relaxed scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent"
+            style={{ userSelect: 'text', cursor: 'text' }}
+          >
+            {gen.caption}
+          </div>
+        ) : (
+          <p className="flex-1 text-sm italic text-[#3a3a3a]">No caption available.</p>
+        )}
+
+        {/* c) Hashtags */}
+        {displayHashtags.length > 0 && (
+          <div className="mb-2 flex shrink-0 flex-wrap gap-1.5">
+            {displayHashtags.map((tag, i) => (
+              <span key={i} className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-indigo-400">
+                {tag}
+              </span>
+            ))}
           </div>
         )}
 
-        {/* RIGHT — caption (60%) */}
-        <div className="flex-[3] flex flex-col p-4">
-          <div className="mb-3">
-            <PlatformBadge platform={gen.platform} />
-          </div>
-          {gen.caption ? (
-            <p className="chat-scrollbar flex-1 overflow-y-auto text-sm leading-relaxed text-[#e5e5e5] whitespace-pre-wrap">{gen.caption}</p>
-          ) : (
-            <p className="flex-1 text-sm italic text-[#3a3a3a]">No caption available.</p>
-          )}
-          {gen.hashtags.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {gen.hashtags.map((tag, i) => (
-                <span key={i} className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-xs text-indigo-400">
-                  {tag.startsWith('#') ? tag : `#${tag}`}
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="mt-3 flex items-center justify-between">
-            {gen.captionTimeS
-              ? <span className="text-[10px] text-[#3a3a3a]">Generated in {gen.captionTimeS}s</span>
-              : <span />
+        {/* d) Action buttons */}
+        <div className="flex shrink-0 items-center justify-end gap-1.5">
+          <Button variant="ghost" size="icon"
+            className="h-7 w-7 rounded-full bg-black/70 border border-white/30 text-white hover:bg-black hover:border-white"
+            onClick={copyCaption} title="Copy caption">
+            {copied
+              ? <span className="text-[9px] font-medium text-green-400">✓</span>
+              : <Copy className="h-3 w-3" />
             }
-            <div className="flex gap-1.5">
-              <IconBtn onClick={copyCaption} title={copied ? 'Copied!' : 'Copy caption'}>
-                {copied
-                  ? <span className="text-[10px] font-medium text-green-400">✓</span>
-                  : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2"/>
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                    </svg>
-                }
-              </IconBtn>
-              <IconBtn onClick={regenerateCaption} disabled={anyBusy} title="Regenerate caption" spinning={captionRegenerating}>
-                <RefreshCw size={13} />
-              </IconBtn>
-            </div>
-          </div>
+          </Button>
+          <IconBtn onClick={regenerateCaption} disabled={anyBusy} title="Regenerate caption" spinning={captionRegenerating}>
+            <RefreshCw size={13} />
+          </IconBtn>
         </div>
 
       </div>
+
     </div>
   )
 }
@@ -732,13 +784,17 @@ export default function ChatClient() {
   }, [input])
 
   useEffect(() => {
-    if (generations.length > 0) setTimeout(scrollToBottom, 100)
-  }, [generations.length, scrollToBottom])
-
-  // Scroll to bottom after history finishes loading so the most recent post is visible
-  useEffect(() => {
-    if (!historyLoading) setTimeout(scrollToBottom, 150)
+    if (historyLoading) return
+    const delays = [50, 150, 300, 600]
+    const timers = delays.map(d => setTimeout(scrollToBottom, d))
+    return () => timers.forEach(clearTimeout)
   }, [historyLoading, scrollToBottom])
+
+  useEffect(() => {
+    if (generations.length === 0) return
+    const t = setTimeout(scrollToBottom, 100)
+    return () => clearTimeout(t)
+  }, [generations.length, scrollToBottom])
 
   useEffect(() => {
     if (!characterId) { router.replace('/dashboard'); return }
@@ -984,7 +1040,7 @@ export default function ChatClient() {
         <div className="space-y-3 text-center">
           <p className="text-sm text-[#a1a1aa]">Character not found.</p>
           <Link href="/dashboard">
-            <Button variant="outline" size="sm" className="border-[#262626] text-[#a1a1aa]">Back to Dashboard</Button>
+            <Button variant="outline" size="sm" className="bg-black text-white border-white hover:bg-zinc-900 hover:text-white hover:border-white">Back to Dashboard</Button>
           </Link>
         </div>
       </div>
@@ -1053,10 +1109,10 @@ export default function ChatClient() {
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <Link href={`/dashboard/library?id=${character.id}`}>
-              <Button size="sm" variant="outline" className="border-[#262626] px-2.5 text-xs text-[#a1a1aa] hover:text-white sm:px-3">Library</Button>
+              <Button size="sm" variant="outline" className="bg-black text-white border-white hover:bg-zinc-900 hover:text-white hover:border-white px-2.5 text-xs sm:px-3">Library</Button>
             </Link>
             <Link href={`/dashboard/settings?id=${character.id}`}>
-              <Button size="sm" variant="outline" className="border-[#262626] px-2.5 text-xs text-[#a1a1aa] hover:text-white sm:px-3">Settings</Button>
+              <Button size="sm" variant="outline" className="bg-black text-white border-white hover:bg-zinc-900 hover:text-white hover:border-white px-2.5 text-xs sm:px-3">Settings</Button>
             </Link>
           </div>
         </div>

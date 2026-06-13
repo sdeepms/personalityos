@@ -65,7 +65,10 @@ function CharacterCard({ character }: { character: Character }) {
   }
 
   return (
-    <div className="rounded-xl border border-[#262626] bg-[#141414] overflow-hidden transition-colors hover:border-[#404040]">
+    <div
+      className="rounded-xl border border-[#262626] bg-[#141414] overflow-hidden transition-colors hover:border-[#404040] cursor-pointer"
+      onClick={() => router.push(`/dashboard/chat?id=${character.id}`)}
+    >
       {/* Thumbnail */}
       <div className="relative h-36 bg-[#1a1a1a] flex items-center justify-center overflow-hidden">
         {primaryImageUrl ? (
@@ -114,8 +117,11 @@ function CharacterCard({ character }: { character: Character }) {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => router.push(`/dashboard/settings?id=${character.id}`)}
-            className="border-[#262626] text-[#a1a1aa] hover:text-white hover:border-[#404040]"
+            onClick={(e) => {
+              e.stopPropagation()
+              router.push(`/dashboard/settings?id=${character.id}`)
+            }}
+            className="bg-black text-white border-white hover:bg-zinc-900 hover:text-white hover:border-white"
           >
             {character.reference_images_ready !== 1 ? 'Add Photos' : 'Settings'}
           </Button>
@@ -178,7 +184,7 @@ export default function DashboardPage() {
               variant="outline"
               size="sm"
               onClick={handleSignOut}
-              className="border-[#262626] text-[#a1a1aa] hover:text-white"
+              className="bg-black text-white border-white hover:bg-zinc-900 hover:text-white hover:border-white"
             >
               Sign Out
             </Button>
