@@ -344,7 +344,11 @@ function ImageCard({ group, onClick, imageOnly }: { group: GenerationGroup; onCl
           </span>
         </div>
         {!imageOnly && caption && (
-          <p className="mb-2 line-clamp-2 text-sm leading-snug text-white">{caption}</p>
+          <p className="mb-2 line-clamp-2 text-sm leading-snug text-white">
+            {caption.split('\n').map((line, i, arr) => (
+              <span key={i}>{line}{i < arr.length - 1 && <br />}</span>
+            ))}
+          </p>
         )}
         <div className="flex gap-1.5" onClick={e => e.stopPropagation()}>
           {current?.image_url && !currentFailed && <OverlayDownload imageUrl={current.image_url} />}
@@ -371,7 +375,11 @@ function CaptionCard({ group, onClick }: { group: GenerationGroup; onClick: () =
           <PlatformBadge platform={group.caption?.platform ?? null} />
           <span className="shrink-0 text-xs text-[#71717a]">{formatRelativeDate(group.created_at)}</span>
         </div>
-        <p className="line-clamp-3 text-sm leading-relaxed text-[#a1a1aa]">{preview || 'No caption'}</p>
+        <p className="line-clamp-3 text-sm leading-relaxed text-[#a1a1aa]">
+          {preview ? preview.split('\n').map((line, i, arr) => (
+            <span key={i}>{line}{i < arr.length - 1 && <br />}</span>
+          )) : 'No caption'}
+        </p>
         <div onClick={e => e.stopPropagation()}>
           <CopyBtn text={caption} fullWidth />
         </div>
@@ -382,7 +390,7 @@ function CaptionCard({ group, onClick }: { group: GenerationGroup; onClick: () =
 
 // ─── Library modal ─────────────────────────────────────────────────────────────
 
-function LibraryModal({ group, onClose }: { group: GenerationGroup; onClose: () => void }) {
+function LibraryModal({ group, showImage, onClose }: { group: GenerationGroup; showImage: boolean; onClose: () => void }) {
   const [captionExpanded, setCaptionExpanded] = useState(false)
 
   useEffect(() => {
@@ -392,119 +400,136 @@ function LibraryModal({ group, onClose }: { group: GenerationGroup; onClose: () 
   const platform = group.caption?.platform ?? group.images[0]?.platform ?? null
   const caption  = group.caption?.text_output ?? ''
   const hashtags = parseHashtags(caption)
-  const imageUrl = group.images[0]?.image_url ?? null
+  const imageUrl = group.images.find(img => img.image_url)?.image_url ?? null
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.9)' }}
+      className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center"
       onClick={onClose}
     >
       <div
-        className="relative rounded-xl overflow-hidden bg-black"
-        style={{ width: '90vw', maxWidth: '800px', maxHeight: '90vh' }}
+        className="relative bg-zinc-950 rounded-2xl overflow-hidden flex flex-col"
+        style={{ width: '90vw', maxWidth: '560px', height: '85vh' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Close button */}
         <button
           onClick={onClose}
           aria-label="Close"
-          className="absolute right-3 top-3 z-[60] flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70"
+          className="absolute top-3 right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 border border-white/20 text-white"
         >
           <X size={16} />
         </button>
 
-        {/* Image area */}
-        {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={imageUrl}
-            alt="Generated"
-            className="block w-full"
-            style={{ maxHeight: '75vh', objectFit: 'contain', background: '#000' }}
-            onClick={() => setCaptionExpanded(false)}
-          />
-        ) : (
+        {showImage ? (
+          /* ── Has image: cover + caption overlay ── */
           <div
-            className="flex h-[200px] w-full items-center justify-center bg-[#141414]"
+            className="relative flex-1 overflow-hidden"
             onClick={() => setCaptionExpanded(false)}
           >
-            <span className="text-sm text-zinc-500">No image</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageUrl}
+              alt="Generated"
+              className="w-full h-full object-cover"
+            />
+
+            {/* Caption overlay */}
+            <div
+              className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-4"
+              style={{ height: captionExpanded ? '50%' : 'auto' }}
+              onClick={e => {
+                e.stopPropagation()
+                if (!captionExpanded) setCaptionExpanded(true)
+              }}
+            >
+              {captionExpanded ? (
+                <div className="flex h-full flex-col cursor-default">
+                  <div className="flex shrink-0 items-center justify-between mb-2">
+                    <PlatformBadge platform={platform} />
+                    <button
+                      onClick={e => { e.stopPropagation(); setCaptionExpanded(false) }}
+                      className="text-xs text-zinc-400 hover:text-white transition-colors"
+                    >
+                      ✕ collapse
+                    </button>
+                  </div>
+                  <div
+                    className="flex-1 overflow-y-auto text-sm text-white leading-relaxed scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent"
+                    style={{ userSelect: 'text', cursor: 'text' }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    {caption ? caption.split('\n').map((line, i, arr) => (
+                      <span key={i}>{line}{i < arr.length - 1 && <br />}</span>
+                    )) : 'No caption'}
+                  </div>
+                  {hashtags.length > 0 && (
+                    <div className="mt-2 flex shrink-0 flex-wrap gap-1" onClick={e => e.stopPropagation()}>
+                      {hashtags.map((tag, i) => (
+                        <span key={i} className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-indigo-400">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="cursor-pointer">
+                  {caption && (
+                    <p className="line-clamp-2 text-sm text-white leading-relaxed">
+                      {caption.split('\n').map((line, i, arr) => (
+                        <span key={i}>{line}{i < arr.length - 1 && <br />}</span>
+                      ))}
+                    </p>
+                  )}
+                  {caption && (
+                    <p className="text-xs text-zinc-400 mt-1">Tap to read more →</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        )}
-
-        {/* Caption overlay */}
-        {captionExpanded ? (
-          /* ── EXPANDED ── */
-          <div
-            className="absolute bottom-0 left-0 right-0 p-4"
-            style={{
-              height: '50%',
-              background: 'rgba(0,0,0,0.95)',
-              transition: 'height 0.3s ease',
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex h-full flex-col">
-              {/* Row 1: badge + timestamp + collapse */}
-              <div className="flex shrink-0 items-center gap-2">
-                <PlatformBadge platform={platform} />
-                <span className="flex-1 text-xs text-white">{formatRelativeDate(group.created_at)}</span>
-                <button
-                  onClick={() => setCaptionExpanded(false)}
-                  className="text-xs text-zinc-400 transition-colors hover:text-white"
-                >
-                  ✕ collapse
-                </button>
+        ) : (
+          /* ── Caption only ── */
+          <div className="flex flex-col h-full">
+            <div className="flex-shrink-0 bg-zinc-900 px-5 pt-5 pb-3 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <PlatformBadge platform={group.caption?.platform ?? null} />
+                <span className="text-xs text-zinc-500 ml-auto">
+                  {formatRelativeDate(group.created_at)}
+                </span>
               </div>
+            </div>
 
-              {/* Row 2: full caption, scrollable */}
-              <div
-                className="mt-2 overflow-y-auto text-sm leading-relaxed text-white scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent"
-                style={{
-                  maxHeight: 'calc(50vh - 120px)',
-                  userSelect: 'text',
-                  cursor: 'text',
-                }}
-              >
-                {caption || 'No caption'}
-              </div>
-
-              {/* Row 3: hashtags */}
-              {hashtags.length > 0 && (
-                <div className="mt-2 flex shrink-0 flex-wrap gap-1">
-                  {hashtags.map((tag, i) => (
-                    <span key={i} className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-indigo-400">
+            <div className="flex-1 overflow-y-auto px-5 py-4 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+              <p className="text-sm text-slate-200 leading-relaxed"
+                 style={{ userSelect: 'text', cursor: 'text' }}>
+                {group.caption?.text_output
+                  ?.split('\n')
+                  .map((line, i, arr) => (
+                    <span key={i}>{line}{i < arr.length - 1 && <br />}</span>
+                  ))}
+              </p>
+              <div className="flex flex-wrap gap-1 mt-4">
+                {group.caption?.text_output
+                  ?.split(/\s+/)
+                  .filter(w => w.startsWith('#'))
+                  .map(tag => (
+                    <span key={tag} className="text-xs bg-zinc-800 text-indigo-400 px-2 py-0.5 rounded-full">
                       {tag}
                     </span>
                   ))}
-                </div>
-              )}
-
-              {/* Row 4: action buttons */}
-              <div className="mt-2 flex shrink-0 gap-2">
-                {caption && <CopyBtn text={caption} fullWidth />}
-                {imageUrl && <DownloadBtn imageUrl={imageUrl} fullWidth />}
               </div>
             </div>
-          </div>
-        ) : (
-          /* ── COLLAPSED ── */
-          <div
-            className="absolute bottom-0 left-0 right-0 cursor-pointer p-4"
-            style={{
-              background: 'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.95) 100%)',
-            }}
-            onClick={() => setCaptionExpanded(true)}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <PlatformBadge platform={platform} />
-              <span className="text-xs text-white">{formatRelativeDate(group.created_at)}</span>
+
+            <div className="flex-shrink-0 px-5 py-4 border-t border-zinc-800">
+              <Button
+                className="w-full bg-black text-white border border-white hover:bg-zinc-900"
+                onClick={() => { navigator.clipboard.writeText(group.caption?.text_output ?? '') }}
+              >
+                <Copy className="h-4 w-4 mr-2" /> Copy caption
+              </Button>
             </div>
-            {caption && (
-              <p className="mt-1 line-clamp-2 text-sm text-white">{caption}</p>
-            )}
-            <p className="mt-1 text-xs text-zinc-400">Tap to read more →</p>
           </div>
         )}
       </div>
@@ -547,6 +572,7 @@ export default function LibraryClient() {
   const [error,         setError]         = useState<string | null>(null)
   const [filter,         setFilter]         = useState<'all' | 'images' | 'captions'>('all')
   const [selectedGroup,  setSelectedGroup]  = useState<GenerationGroup | null>(null)
+  const [modalMode,      setModalMode]      = useState<'full' | 'caption-only'>('full')
   const [loadingMore,    setLoadingMore]    = useState(false)
   const [token,         setToken]         = useState<string | null>(null)
   const [avatarError,   setAvatarError]   = useState(false)
@@ -774,13 +800,13 @@ export default function LibraryClient() {
               {filteredGroups.map((group, i) => {
                 const key = group.correlation_id ?? `${group.created_at}-${i}`
                 if (filter === 'images') {
-                  return <ImageCard key={key} group={group} imageOnly onClick={() => setSelectedGroup(group)} />
+                  return <ImageCard key={key} group={group} imageOnly onClick={() => { setModalMode('full'); setSelectedGroup(group) }} />
                 }
                 const showAsCaption = filter === 'captions' || group.images.length === 0
                 return showAsCaption && group.caption
-                  ? <CaptionCard key={key} group={group} onClick={() => setSelectedGroup(group)} />
+                  ? <CaptionCard key={key} group={group} onClick={() => { setModalMode('caption-only'); setSelectedGroup(group) }} />
                   : group.images.length > 0
-                  ? <ImageCard key={key} group={group} onClick={() => setSelectedGroup(group)} />
+                  ? <ImageCard key={key} group={group} onClick={() => { setModalMode('full'); setSelectedGroup(group) }} />
                   : null
               })}
             </div>
@@ -800,7 +826,11 @@ export default function LibraryClient() {
 
       {/* ── Modal ── */}
       {selectedGroup && (
-        <LibraryModal group={selectedGroup} onClose={() => setSelectedGroup(null)} />
+        <LibraryModal
+          group={selectedGroup}
+          showImage={modalMode === 'full' && selectedGroup.images.length > 0 && selectedGroup.images.some(i => i.image_url)}
+          onClose={() => { setSelectedGroup(null); setModalMode('full') }}
+        />
       )}
     </div>
   )

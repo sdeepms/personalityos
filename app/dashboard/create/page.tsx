@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Upload, Sparkles } from 'lucide-react'
+import { Upload, Sparkles, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/browser'
 
@@ -76,7 +76,12 @@ export default function CreateCharacterPage() {
   const [authChecked, setAuthChecked] = useState(false)
   const [referenceFile, setReferenceFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [generateReference, setGenerateReference] = useState(false)
+  const [generateReference,   setGenerateReference]   = useState(false)
+  const [generatedPreviewUrl, setGeneratedPreviewUrl] = useState<string | null>(null)
+  const [generating,          setGenerating]          = useState(false)
+  const [createdCharacterId,  setCreatedCharacterId]  = useState<string | null>(null)
+  const [createdToken,        setCreatedToken]        = useState<string | null>(null)
+  const [validationError,     setValidationError]     = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -92,6 +97,33 @@ export default function CreateCharacterPage() {
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  async function generateImage(charId: string, authToken: string) {
+    const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL ?? 'http://localhost:8787'
+    setGeneratedPreviewUrl(null)
+    setGenerating(true)
+    try {
+      const res = await fetch(`${workerUrl}/api/generate/image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({
+          character_id:      charId,
+          image_description: 'professional portrait headshot, front facing',
+          platform:          'instagram',
+        }),
+      })
+      const data = await res.json() as { data?: { image_url: string } }
+      if (data.data?.image_url) {
+        setGeneratedPreviewUrl(data.data.image_url)
+      } else {
+        router.push(`/dashboard/chat?id=${charId}`)
+      }
+    } catch {
+      router.push(`/dashboard/chat?id=${charId}`)
+    } finally {
+      setGenerating(false)
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -148,18 +180,11 @@ export default function CreateCharacterPage() {
       }
 
       if (generateReference && !referenceFile && newId) {
-        fetch(`${workerUrl}/api/generate/image`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            character_id: newId,
-            image_description: 'professional portrait headshot',
-            platform: 'instagram',
-          }),
-        }).catch(() => { /* fire and forget */ })
+        setCreatedCharacterId(newId)
+        setCreatedToken(session.access_token)
+        setSubmitting(false)
+        await generateImage(newId, session.access_token)
+        return
       }
 
       router.push(newId ? `/dashboard/chat?id=${newId}` : '/dashboard')
@@ -351,25 +376,49 @@ export default function CreateCharacterPage() {
                   )}
                 </button>
                 {/* Generate card */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGenerateReference(true)
-                    if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null) }
-                    setReferenceFile(null)
-                  }}
-                  className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
-                    generateReference
-                      ? 'border-indigo-500 bg-indigo-950/30'
-                      : 'border-[#262626] bg-[#141414] hover:border-[#404040]'
-                  }`}
-                >
-                  <Sparkles size={20} className={generateReference ? 'text-indigo-400' : 'text-zinc-500'} />
-                  <div>
-                    <p className="text-sm text-zinc-400">Generate from DNA</p>
-                    <p className="text-xs text-zinc-600 mt-0.5">AI creates a face from your character description</p>
+                {generatedPreviewUrl ? (
+                  <div className="relative rounded-lg overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={generatedPreviewUrl} alt="Generated preview" className="w-full aspect-square object-cover rounded-lg" />
+                    <button
+                      type="button"
+                      onClick={() => generateImage(createdCharacterId!, createdToken!)}
+                      className="absolute bottom-2 right-2 h-7 w-7 rounded-full bg-black/70 border border-white/30 text-white flex items-center justify-center hover:bg-black"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                    </button>
                   </div>
-                </button>
+                ) : generating ? (
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-indigo-500 bg-indigo-950/30 p-6 text-center">
+                    <div className="h-5 w-5 rounded-full border-2 border-indigo-400/30 border-t-indigo-400 animate-spin" />
+                    <p className="text-xs text-zinc-500">Generating…</p>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!form.name.trim() || !form.domain.trim()) {
+                        setValidationError('Please fill in Character Name and Domain first.')
+                        return
+                      }
+                      setValidationError(null)
+                      setGenerateReference(true)
+                      if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null) }
+                      setReferenceFile(null)
+                    }}
+                    className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
+                      generateReference
+                        ? 'border-indigo-500 bg-indigo-950/30'
+                        : 'border-[#262626] bg-[#141414] hover:border-[#404040]'
+                    }`}
+                  >
+                    <Sparkles size={20} className={generateReference ? 'text-indigo-400' : 'text-zinc-500'} />
+                    <div>
+                      <p className="text-sm text-zinc-400">Generate from DNA</p>
+                      <p className="text-xs text-zinc-600 mt-0.5">AI creates a face from your character description</p>
+                    </div>
+                  </button>
+                )}
               </div>
               <input
                 ref={fileInputRef}
@@ -386,6 +435,18 @@ export default function CreateCharacterPage() {
                   e.target.value = ''
                 }}
               />
+              {validationError && (
+                <p className="text-xs text-red-400 mt-2">{validationError}</p>
+              )}
+              {generatedPreviewUrl && (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/dashboard/chat?id=${createdCharacterId}`)}
+                  className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-500 transition-colors"
+                >
+                  Continue to Chat →
+                </button>
+              )}
             </div>
           </section>
 
@@ -397,7 +458,7 @@ export default function CreateCharacterPage() {
 
           <Button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || generating || !!generatedPreviewUrl}
             className="w-full bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50"
             size="lg"
           >
