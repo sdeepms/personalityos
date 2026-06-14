@@ -23,7 +23,7 @@ async function checkGenerationLimit(
   userId: string,
   type: 'text' | 'image'
 ): Promise<{ allowed: boolean; used: number; limit: number }> {
-  const DAILY_LIMIT = 20
+  const DAILY_LIMIT = 0
   const todayStart = new Date()
   todayStart.setUTCHours(0, 0, 0, 0)
 

@@ -1411,7 +1411,7 @@ export default function ChatClient() {
                           }
                         )
                         setFeedbackSubmitted(true)
-                        setCaptionLimitHit(false)
+                        setTimeout(() => setCaptionLimitHit(false), 3000)
                       } catch {
                         // silent fail
                       } finally {
