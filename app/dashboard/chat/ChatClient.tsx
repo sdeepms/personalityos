@@ -1333,7 +1333,14 @@ export default function ChatClient() {
                   setIntentPrefix(newIntent)
                   const newInput = buildInput(newIntent, platformPrefix)
                   setInput(newInput)
-                  setTimeout(() => textareaRef.current?.focus(), 0)
+                  setTimeout(() => {
+                    const ta = textareaRef.current
+                    if (ta) {
+                      ta.focus()
+                      const len = ta.value.length
+                      ta.setSelectionRange(len, len)
+                    }
+                  }, 0)
                 }}
                 className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${sending ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''} ${
                   intentPrefix === intent

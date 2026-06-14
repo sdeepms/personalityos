@@ -100,6 +100,17 @@ chat.post('/', async (c) => {
 PLATFORM: ${typedPlatform}
 FORMAT RULES: ${formatRules}
 
+CONTENT INSTRUCTION:
+The user's message may mention specific real people, events,
+places, organizations, or objects by name.
+If it does, you MUST incorporate those exact names and references
+into the caption naturally. Do not replace them with generic
+descriptions. The caption should feel grounded in the specific
+context the user mentioned.
+For the image_description, include the specific context visually
+where relevant (e.g. if user mentions a court, show character
+near a courthouse; if user mentions a book, show character with it).
+
 Always respond with valid JSON only. No markdown. No other text.
 Schema:
 {
