@@ -268,7 +268,7 @@ function ImageCard({ group, onClick, imageOnly }: { group: GenerationGroup; onCl
 
   const platform  = group.caption?.platform ?? group.images[0]?.platform ?? null
   const caption   = group.caption?.text_output ?? ''
-  const aspectClass = platform === 'story' ? 'aspect-[9/16]' : platform === 'x' ? 'aspect-[16/9]' : 'aspect-[4/3]'
+  const aspectClass = 'aspect-[4/3]'
   const current   = group.images[activeIndex]
   const currentFailed = failedImages.has(activeIndex)
   const multi     = group.images.length > 1
