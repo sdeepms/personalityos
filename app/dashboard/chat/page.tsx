@@ -12,6 +12,8 @@ function LoadingShell() {
   )
 }
 
+export const metadata = { title: 'Chat Studio' }
+
 export default function ChatPage() {
   return (
     <Suspense fallback={<LoadingShell />}>
