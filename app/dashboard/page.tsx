@@ -208,7 +208,7 @@ export default function DashboardPage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-10">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-white">Your Characters</h1>
             <p className="mt-1 text-sm text-[#a1a1aa]">
@@ -216,7 +216,7 @@ export default function DashboardPage() {
             </p>
           </div>
           <Link href="/dashboard/create">
-            <Button className="bg-indigo-600 text-white hover:bg-indigo-500">
+            <Button className="w-full md:w-auto bg-indigo-600 text-white hover:bg-indigo-500">
               + Create Character
             </Button>
           </Link>
@@ -258,7 +258,7 @@ export default function DashboardPage() {
                 <CharacterCard key={c.id} character={c} />
               ))}
               <Link href="/dashboard/create" className="block">
-                <div className="group rounded-xl border-2 border-dashed border-zinc-700 bg-transparent h-full min-h-[280px] flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-indigo-500 hover:bg-indigo-500/5 transition-all duration-200">
+                <div className="group rounded-xl border-2 border-dashed border-indigo-500/40 bg-indigo-500/5 md:border-zinc-700 md:bg-transparent h-full min-h-[120px] md:min-h-[280px] flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-indigo-500 hover:bg-indigo-500/5 transition-all duration-200">
                   <div className="h-12 w-12 rounded-full border-2 border-zinc-600 group-hover:border-indigo-400 flex items-center justify-center transition-colors">
                     <span className="text-2xl text-zinc-500 group-hover:text-indigo-400 transition-colors leading-none">+</span>
                   </div>
