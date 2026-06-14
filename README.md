@@ -1,36 +1,95 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PersonalityOS — Own Your AI Identity
 
-## Getting Started
+Create persistent AI characters that generate consistent content across every platform. One face. One voice. Infinite content.
 
-First, run the development server:
+## What It Does
+
+PersonalityOS is a Digital Identity OS for content creators. You create an AI character once — give it a name, a domain, a communication style, and a reference photo. From that point, every caption and image it generates stays in that character's face and voice, forever.
+
+No re-uploading. No re-explaining. Just open chat and generate.
+
+## Live Demo
+
+https://personalityos-d1x.pages.dev
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 16, TypeScript, Tailwind CSS, shadcn/ui |
+| Backend | Cloudflare Workers + Hono |
+| Database | Supabase PostgreSQL |
+| Storage | Cloudflare R2 |
+| Auth | Supabase Auth (Email + Google + GitHub) |
+| LLM | Qwen3 32B via OpenRouter (default), Claude Sonnet (paid) |
+| Image Generation | MuAPI — nano-banana-edit + flux-dev |
+| Deployment | Cloudflare Pages (frontend) + Cloudflare Workers (backend) |
+
+## Key Architecture Decisions
+
+- **One Worker, Hono router** — single Cloudflare Worker handles all API routes
+- **Provider Adapter** — image generation never calls MuAPI directly; always through an adapter layer so providers can be swapped without code changes
+- **Prompt DNA** — each character stores assembled prompt modifiers, style preferences, and negative prompts as a JSON field; deterministic prompt assembly means Tuesday's Arjun looks like Thursday's Arjun
+- **Supabase only** — one database, no D1, no Redis, no second database
+- **Assets over interactions** — every generation saves to the library automatically
+
+## Running Locally
 
 ```bash
+# Clone
+git clone https://github.com/sdeepms/personalityos
+cd personalityos
+
+# Install dependencies
+npm install
+
+# Set environment variables
+cp .env.local.example .env.local
+# Fill in: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, 
+#          NEXT_PUBLIC_WORKER_URL
+
+# Start frontend
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Start Worker (separate terminal)
+cd workers/api
+cp .dev.vars.example .dev.vars
+# Fill in all API keys
+wrangler dev --local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Frontend: http://localhost:3000
+Worker: http://localhost:8787
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+personalityos/
+├── app/                    # Next.js pages
+│   ├── (auth)/             # Login, signup
+│   └── dashboard/          # Chat, library, settings, create
+├── workers/api/src/
+│   ├── routes/             # characters, chat, generate, library
+│   ├── providers/          # Provider Adapter (MuAPI, FAL stub, LLM)
+│   └── services/           # DNA assembler, prompt builder
+├── docs/                   # Architecture documents
+└── agents/                 # Claude Code agent specifications
+```
 
-## Learn More
+## Roadmap
 
-To learn more about Next.js, take a look at the following resources:
+| Version | Focus |
+|---|---|
+| V1 (current) | Character creation, image + caption generation, asset library |
+| V1.5 | Direct social posting, better face consistency |
+| V2 | Video generation (Kling/Runway adapters) |
+| V3 | Voice DNA (ElevenLabs), template catalog |
+| V4 | Creator marketplace |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Infrastructure Cost
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+~₹2,000/month at 100 users. Free tier covers database, storage, and hosting.
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Built by a solo founder in 4 days.
