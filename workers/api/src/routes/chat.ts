@@ -103,13 +103,18 @@ FORMAT RULES: ${formatRules}
 CONTENT INSTRUCTION:
 The user's message may mention specific real people, events,
 places, organizations, or objects by name.
-If it does, you MUST incorporate those exact names and references
-into the caption naturally. Do not replace them with generic
-descriptions. The caption should feel grounded in the specific
-context the user mentioned.
-For the image_description, include the specific context visually
-where relevant (e.g. if user mentions a court, show character
-near a courthouse; if user mentions a book, show character with it).
+If it does, incorporate those exact names naturally into the caption.
+STRICT RULE: Only use facts that the user explicitly provided
+in their message. Do not add biographical details, dates,
+statistics, or any facts about real people that the user
+did not mention. If you don't know a specific detail,
+describe the theme or lesson instead — never invent facts.
+It is better to write a thematic caption than a factually
+wrong one.
+
+For image_description: include the visual context from
+the user's message (e.g. courtroom, highway, parliament)
+but keep it to setting and mood — no invented facts.
 
 Always respond with valid JSON only. No markdown. No other text.
 Schema:
