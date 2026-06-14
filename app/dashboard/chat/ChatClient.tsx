@@ -557,11 +557,11 @@ function GenerationCard({
   const panelWidth = IMAGE_PANEL_WIDTH[gen.platform] ?? 'w-64'
 
   return (
-    <div className="flex flex-col md:flex-row rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900 md:items-stretch">
+    <div className="flex flex-col md:grid md:grid-cols-2 rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900">
 
       {/* LEFT — image, half width */}
       <div
-        className="relative w-full md:w-1/2 flex-shrink-0 overflow-hidden cursor-pointer aspect-[4/3]"
+        className="relative w-full flex-shrink-0 overflow-hidden cursor-pointer aspect-[4/3]"
         onClick={() => gen.imageUrl && onImagePanelClick?.(gen)}
       >
         {imagePanelContent}
@@ -647,7 +647,7 @@ function GenerationCard({
       </div>
 
       {/* RIGHT — caption panel */}
-      <div className="hidden md:flex flex-col flex-1 min-h-0 overflow-hidden p-4 gap-2 border-l border-zinc-800">
+      <div className="hidden md:flex flex-col overflow-hidden p-4 gap-2 border-l border-zinc-800 min-h-0">
 
         {/* a) Badge + timing */}
         <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
