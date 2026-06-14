@@ -208,15 +208,15 @@ export default function DashboardPage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-10">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-white">Your Characters</h1>
             <p className="mt-1 text-sm text-[#a1a1aa]">
               Each character is a complete AI identity with its own voice, style, and visual DNA.
             </p>
           </div>
-          <Link href="/dashboard/create" className="hidden md:block">
-            <Button className="bg-indigo-600 text-white hover:bg-indigo-500">
+          <Link href="/dashboard/create">
+            <Button className="w-full md:w-auto bg-indigo-600 text-white hover:bg-indigo-500">
               + Create Character
             </Button>
           </Link>

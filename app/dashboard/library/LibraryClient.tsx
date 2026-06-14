@@ -751,45 +751,10 @@ export default function LibraryClient() {
         </div>
 
         {/* ── Filter tabs + inline search ── */}
-        <div className="flex items-center gap-3 mb-4 relative">
-          {/* Desktop filter tabs */}
-          <div className="hidden md:flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
-            {(['all', 'images', 'captions'] as const).map(tab => (
-              <button key={tab}
-                onClick={() => setFilter(tab)}
-                className={`px-3 py-1 rounded-md text-sm capitalize transition-colors ${
-                  filter === tab
-                    ? 'bg-zinc-700 text-white'
-                    : 'text-zinc-400 hover:text-white'
-                }`}>
-                {tab}
-              </button>
-            ))}
-          </div>
+        <div className="flex flex-col md:flex-row md:items-center gap-2 mb-4">
 
-          {/* Mobile filter button */}
-          <div className="md:hidden relative">
-            <button onClick={() => setFilterOpen(v => !v)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-zinc-300">
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              {filter === 'all' ? 'All' : filter === 'images' ? 'Images' : 'Captions'}
-            </button>
-            {filterOpen && (
-              <div className="absolute top-full left-0 mt-1 z-20 bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden shadow-xl">
-                {(['all', 'images', 'captions'] as const).map(tab => (
-                  <button key={tab}
-                    onClick={() => { setFilter(tab); setFilterOpen(false) }}
-                    className={`block w-full text-left px-4 py-2 text-sm ${
-                      filter === tab ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:bg-zinc-800'
-                    }`}>
-                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="relative flex-1 md:flex-none md:w-64">
+          {/* Search — full width on mobile, flex-1 on desktop */}
+          <div className="relative w-full md:flex-1 md:order-2">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
             <input
               type="text"
@@ -804,6 +769,47 @@ export default function LibraryClient() {
               </button>
             )}
           </div>
+
+          {/* Filter controls — below search on mobile */}
+          <div className="md:order-1 flex items-center gap-3 relative">
+            {/* Desktop filter tabs */}
+            <div className="hidden md:flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
+              {(['all', 'images', 'captions'] as const).map(tab => (
+                <button key={tab}
+                  onClick={() => setFilter(tab)}
+                  className={`px-3 py-1 rounded-md text-sm capitalize transition-colors ${
+                    filter === tab
+                      ? 'bg-zinc-700 text-white'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}>
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            {/* Mobile filter button */}
+            <div className="md:hidden relative">
+              <button onClick={() => setFilterOpen(v => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-zinc-300">
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                {filter === 'all' ? 'All' : filter === 'images' ? 'Images' : 'Captions'}
+              </button>
+              {filterOpen && (
+                <div className="absolute top-full left-0 mt-1 z-20 bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden shadow-xl">
+                  {(['all', 'images', 'captions'] as const).map(tab => (
+                    <button key={tab}
+                      onClick={() => { setFilter(tab); setFilterOpen(false) }}
+                      className={`block w-full text-left px-4 py-2 text-sm ${
+                        filter === tab ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:bg-zinc-800'
+                      }`}>
+                      {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
         </div>
 
         {/* ── Grid ── */}

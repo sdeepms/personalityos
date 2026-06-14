@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { RefreshCw, Share2, Download, Copy, Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { RefreshCw, Share2, Download, Copy, Check, ChevronLeft, ChevronRight, X, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/browser'
 
@@ -340,6 +340,7 @@ function GenerationCard({
   const [linkCopied,          setLinkCopied]          = useState(false)
   const [captionRegenerating, setCaptionRegenerating] = useState(false)
   const [imageRegenerating,   setImageRegenerating]   = useState(false)
+  const [captionExpanded,     setCaptionExpanded]     = useState(false)
 
   const anyBusy = captionRegenerating || imageRegenerating || sending
 
@@ -564,12 +565,6 @@ function GenerationCard({
         onClick={() => gen.imageUrl && onImagePanelClick?.(gen)}
       >
         {imagePanelContent}
-        {gen.caption && (
-          <div className="md:hidden absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-3 pointer-events-none">
-            <PlatformBadge platform={gen.platform} />
-            <p className="mt-1 line-clamp-2 text-sm text-white leading-snug">{gen.caption}</p>
-          </div>
-        )}
         {gen.imageUrl && (
           <div className="absolute bottom-2 right-2 z-10 flex gap-1.5" onClick={e => e.stopPropagation()}>
             <button
@@ -599,6 +594,56 @@ function GenerationCard({
             </button>
           </div>
         )}
+      </div>
+
+      {/* Mobile caption — hidden on desktop */}
+      <div className="md:hidden">
+
+        {/* Collapsed header — always visible */}
+        <button
+          onClick={() => setCaptionExpanded(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 border-t border-zinc-800">
+          <div className="flex items-center gap-2 min-w-0">
+            <PlatformBadge platform={gen.platform} />
+            <span className="ml-2 text-sm text-slate-300 line-clamp-1 text-left flex-1 min-w-0">
+              {gen.caption ? gen.caption.slice(0, 60) + (gen.caption.length > 60 ? '…' : '') : ''}
+            </span>
+          </div>
+          <ChevronDown className={`ml-2 h-4 w-4 shrink-0 text-zinc-500 transition-transform ${captionExpanded ? 'rotate-180' : ''}`} />
+        </button>
+
+        {/* Expanded content */}
+        {captionExpanded && (
+          <div className="px-4 pb-4 border-t border-zinc-800 space-y-3">
+            <p className="text-sm text-slate-200 leading-relaxed mt-3 whitespace-pre-wrap">
+              {gen.caption}
+            </p>
+            {displayHashtags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {displayHashtags.map((tag, i) => (
+                  <span key={i} className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-indigo-400">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-1.5">
+              <Button variant="ghost" size="icon"
+                className={`h-8 w-8 rounded-full transition-all duration-200 ${
+                  copied
+                    ? 'border border-green-500 text-green-400 bg-green-500/10'
+                    : 'border border-zinc-600 text-white bg-transparent hover:bg-zinc-800 hover:border-zinc-400'
+                }`}
+                onClick={copyCaption} title="Copy">
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              </Button>
+              <IconBtn onClick={regenerateCaption} disabled={anyBusy} title="Regenerate caption" spinning={captionRegenerating}>
+                <RefreshCw size={13} />
+              </IconBtn>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* RIGHT — caption panel */}
@@ -1290,7 +1335,7 @@ export default function ChatClient() {
                   setInput(newInput)
                   setTimeout(() => textareaRef.current?.focus(), 0)
                 }}
-                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${
+                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${sending ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''} ${
                   intentPrefix === intent
                     ? 'bg-zinc-600 text-white border-zinc-500'
                     : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'
@@ -1311,7 +1356,7 @@ export default function ChatClient() {
                 key={p.id}
                 onClick={() => selectPlatform(p.id)}
                 disabled={sending}
-                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${
+                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${sending ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''} ${
                   activePlatform === p.id
                     ? `${PLATFORM_SHORTCUT[p.id]} bg-zinc-800`
                     : PLATFORM_SHORTCUT[p.id]
@@ -1355,7 +1400,7 @@ export default function ChatClient() {
               placeholder={`Ask ${character.name} to create content...`}
               rows={1}
               disabled={sending}
-              className="chat-scrollbar flex-1 resize-none overflow-y-auto rounded-lg border border-[#262626] bg-[#141414] px-3 py-2 text-sm text-white placeholder-[#71717a] outline-none transition-colors focus:border-[#404040] disabled:opacity-50"
+              className={`chat-scrollbar flex-1 resize-none overflow-y-auto rounded-lg border border-[#262626] bg-[#141414] px-3 py-2 text-sm text-white placeholder-[#71717a] outline-none transition-colors focus:border-[#404040] disabled:opacity-50 ${sending ? 'opacity-60 cursor-not-allowed' : ''}`}
             />
 
             <Button
@@ -1410,7 +1455,8 @@ export default function ChatClient() {
               <img
                 src={modalGeneration.imageUrl ?? ''}
                 alt="Generated"
-                className="w-full h-full object-cover"
+                className="w-full h-full"
+                style={{ objectFit: 'contain', background: '#000' }}
               />
 
               {modalGeneration.caption && (
