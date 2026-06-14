@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { createClient } from '@supabase/supabase-js'
 import { authMiddleware } from './middleware/auth'
 import { characters } from './routes/characters'
 import { chat } from './routes/chat'
@@ -68,6 +69,39 @@ app.get('/files/*', async (c) => {
   headers.set('cache-control', 'public, max-age=31536000')
 
   return new Response(object.body, { headers })
+})
+
+app.post('/api/feedback/request-more', async (c) => {
+  // Verify JWT
+  const authHeader = c.req.header('Authorization')
+  const token = authHeader?.replace('Bearer ', '')
+  if (!token) return c.json({ error: 'Unauthorized' }, 401)
+
+  const supabase = createClient(
+    c.env.SUPABASE_URL,
+    c.env.SUPABASE_SERVICE_KEY
+  )
+  const { data: { user }, error } = await supabase.auth.getUser(token)
+  if (error || !user) return c.json({ error: 'Unauthorized' }, 401)
+
+  const body = await c.req.json()
+  const feedback = body.feedback ?? ''
+
+  // Insert override granting 5 extra of each
+  await supabase.from('generation_overrides').insert({
+    user_id: user.id,
+    extra_text: 5,
+    extra_image: 5,
+    feedback: feedback.slice(0, 500)
+  })
+
+  return c.json({
+    data: {
+      message: 'Thank you! 5 extra generations added.',
+      extra_text: 5,
+      extra_image: 5
+    }
+  })
 })
 
 // All /api/* routes require a valid Supabase JWT

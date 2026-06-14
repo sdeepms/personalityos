@@ -55,6 +55,7 @@ type ActiveGeneration = {
   imageLoading: boolean
   imageFailed: boolean
   noReferenceImage: boolean
+  imageLimitReached?: boolean
   generationId: string | null
   status: 'thinking' | 'caption_ready' | 'done' | 'error'
   createdAt?: string
@@ -509,10 +510,17 @@ function GenerationCard({
       </div>
     )
 
+    if (gen.imageLimitReached) return (
+      <p className="text-xs text-amber-400 text-center p-4">
+        Daily image limit reached.
+        Captions still available.
+      </p>
+    )
+
     return null
   })()
 
-  const showImagePanel = gen.imageLoading || !!gen.imageUrl || gen.imageFailed || gen.noReferenceImage
+  const showImagePanel = gen.imageLoading || !!gen.imageUrl || gen.imageFailed || gen.noReferenceImage || !!gen.imageLimitReached
 
   // Caption-only card (no image panel)
   if (!showImagePanel) {
@@ -842,6 +850,7 @@ export default function ChatClient() {
   const searchParams = useSearchParams()
   const characterId  = searchParams.get('id')
   const router       = useRouter()
+  const supabase     = createClient()
 
   const [character,       setCharacter]     = useState<Character | null>(null)
   const [charLoading,     setCharLoading]   = useState(true)
@@ -859,6 +868,13 @@ export default function ChatClient() {
   const [lightbox,             setLightbox]             = useState<{ images: LightboxImage[]; index: number } | null>(null)
   const [modalGeneration,      setModalGeneration]      = useState<ActiveGeneration | null>(null)
   const [modalCaptionExpanded, setModalCaptionExpanded] = useState(false)
+
+  const [captionLimitHit,    setCaptionLimitHit]    = useState(false)
+  const [imageLimitHit,      setImageLimitHit]      = useState(false)
+  const [showFeedbackForm,   setShowFeedbackForm]   = useState(false)
+  const [feedbackText,       setFeedbackText]       = useState('')
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
+  const [feedbackSubmitted,  setFeedbackSubmitted]  = useState(false)
 
   const scrollRef   = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -1010,6 +1026,16 @@ export default function ChatClient() {
         return
       }
 
+      if (res.status === 429 || json.code === 'IMAGE_LIMIT_REACHED') {
+        setImageLimitHit(true)
+        setGenerations(prev => prev.map(g =>
+          g.localId === localId
+            ? { ...g, imageLoading: false, imageLimitReached: true, status: 'done' }
+            : g
+        ))
+        return
+      }
+
       if (!res.ok) throw new Error(json.error ?? 'Image request failed')
 
       const imageTimeS = ((Date.now() - start) / 1000).toFixed(1)
@@ -1060,6 +1086,13 @@ export default function ChatClient() {
       const json = await res.json() as {
         data?: { caption: string; image_description: string; hashtags: string[]; generation_id: string | null }
         error?: string
+        code?: string
+      }
+
+      if (res.status === 429 || json.code === 'CAPTION_LIMIT_REACHED') {
+        setCaptionLimitHit(true)
+        setGenerations(prev => prev.filter(g => g.localId !== localId))
+        return
       }
 
       if (!res.ok) throw new Error(json.error ?? 'Chat failed')
@@ -1321,6 +1354,95 @@ export default function ChatClient() {
       {/* ── Bottom input section ── */}
       <div className="sticky bottom-0 bg-[#0a0a0a] border-t border-zinc-800 z-10">
 
+      {captionLimitHit && (
+        <div className="mx-4 mb-3 rounded-xl border border-amber-500/30
+                        bg-amber-500/10 p-4">
+          {!feedbackSubmitted ? (
+            <>
+              <div className="flex items-start gap-3">
+                <span className="text-xl">⚡</span>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-amber-300">
+                    Daily caption limit reached (20/20)
+                  </p>
+                  <p className="text-xs text-amber-400/70 mt-0.5">
+                    Resets at midnight UTC. Want 5 more right now?
+                  </p>
+                </div>
+              </div>
+
+              {!showFeedbackForm ? (
+                <button
+                  onClick={() => setShowFeedbackForm(true)}
+                  className="mt-3 w-full rounded-lg bg-amber-500/20
+                             border border-amber-500/40 text-amber-300
+                             text-sm py-2 hover:bg-amber-500/30
+                             transition-colors">
+                  Request 5 more generations →
+                </button>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  <textarea
+                    value={feedbackText}
+                    onChange={e => setFeedbackText(e.target.value)}
+                    placeholder="What would you like to create? Your feedback helps us improve PersonalityOS."
+                    rows={3}
+                    className="w-full rounded-lg bg-zinc-900 border
+                               border-zinc-700 text-sm text-white
+                               placeholder:text-zinc-500 p-3
+                               focus:outline-none focus:border-amber-500/50
+                               resize-none" />
+                  <button
+                    disabled={feedbackSubmitting || !feedbackText.trim()}
+                    onClick={async () => {
+                      setFeedbackSubmitting(true)
+                      try {
+                        const { data: { session } } =
+                          await supabase.auth.getSession()
+                        await fetch(
+                          `${WORKER_URL}/api/feedback/request-more`,
+                          {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              Authorization: `Bearer ${session?.access_token}`
+                            },
+                            body: JSON.stringify({ feedback: feedbackText })
+                          }
+                        )
+                        setFeedbackSubmitted(true)
+                        setCaptionLimitHit(false)
+                      } catch {
+                        // silent fail
+                      } finally {
+                        setFeedbackSubmitting(false)
+                      }
+                    }}
+                    className="w-full rounded-lg bg-amber-500 text-black
+                               font-medium text-sm py-2
+                               hover:bg-amber-400 transition-colors
+                               disabled:opacity-40 disabled:cursor-not-allowed">
+                    {feedbackSubmitting ? 'Submitting...' : 'Submit & get 5 more'}
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-3">
+              <span className="text-xl">✅</span>
+              <div>
+                <p className="text-sm font-medium text-green-300">
+                  5 extra generations added!
+                </p>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Thank you for your feedback.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Intent shortcuts ── */}
       <div>
         <div className="mx-auto w-full max-w-5xl px-4 pt-2 sm:px-6">
@@ -1406,13 +1528,13 @@ export default function ChatClient() {
               }}
               placeholder={`Ask ${character.name} to create content...`}
               rows={1}
-              disabled={sending}
+              disabled={sending || captionLimitHit}
               className={`chat-scrollbar flex-1 resize-none overflow-y-auto rounded-lg border border-[#262626] bg-[#141414] px-3 py-2 text-sm text-white placeholder-[#71717a] outline-none transition-colors focus:border-[#404040] disabled:opacity-50 ${sending ? 'opacity-60 cursor-not-allowed' : ''}`}
             />
 
             <Button
               onClick={handleSend}
-              disabled={!input.trim() || sending}
+              disabled={!input.trim() || sending || captionLimitHit}
               size="sm"
               className="mb-0.5 shrink-0 bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40"
             >

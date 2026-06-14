@@ -18,6 +18,44 @@ function db(env: Env) {
   return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY)
 }
 
+async function checkGenerationLimit(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  type: 'text' | 'image'
+): Promise<{ allowed: boolean; used: number; limit: number }> {
+  const DAILY_LIMIT = 20
+  const todayStart = new Date()
+  todayStart.setUTCHours(0, 0, 0, 0)
+
+  // Count today's generations
+  const { count: used } = await supabase
+    .from('generations')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('generation_type', type)
+    .gte('created_at', todayStart.toISOString())
+
+  // Check for extra grants
+  const { data: overrides } = await supabase
+    .from('generation_overrides')
+    .select('extra_text, extra_image')
+    .eq('user_id', userId)
+    .gte('granted_at', todayStart.toISOString())
+
+  const extraGranted = (overrides ?? []).reduce((sum, row) => {
+    return sum + (type === 'text' ? (row.extra_text ?? 0) : (row.extra_image ?? 0))
+  }, 0)
+
+  const totalLimit = DAILY_LIMIT + extraGranted
+  const totalUsed = used ?? 0
+
+  return {
+    allowed: totalUsed < totalLimit,
+    used: totalUsed,
+    limit: totalLimit
+  }
+}
+
 // POST /api/generate/image — synchronous, blocks until image is ready
 generate.post('/image', async (c) => {
   const userId = c.get('userId')
@@ -67,6 +105,18 @@ generate.post('/image', async (c) => {
         { error: 'Upload a reference photo first', code: 'REFERENCE_IMAGES_REQUIRED' },
         400
       )
+    }
+
+    const limitCheck = await checkGenerationLimit(
+      db(c.env), userId, 'image'
+    )
+    if (!limitCheck.allowed) {
+      return c.json({
+        error: 'Daily image limit reached',
+        code: 'IMAGE_LIMIT_REACHED',
+        used: limitCheck.used,
+        limit: limitCheck.limit
+      }, 429)
     }
 
     // 4. Assemble prompt
