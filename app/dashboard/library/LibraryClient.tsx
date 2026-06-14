@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   X, Download, Copy, Check, Loader2, FolderOpen,
-  Search, Settings, ChevronLeft, ChevronRight, ImageOff, SlidersHorizontal,
+  Search, Settings, ChevronLeft, ChevronRight, ImageOff,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -790,9 +790,9 @@ export default function LibraryClient() {
             {/* Mobile filter button */}
             <div className="md:hidden relative">
               <button onClick={() => setFilterOpen(v => !v)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-sm text-zinc-300">
-                <SlidersHorizontal className="h-3.5 w-3.5" />
+                className="px-3 py-1.5 rounded-lg text-sm bg-zinc-900 border border-zinc-700 text-white font-medium">
                 {filter === 'all' ? 'All' : filter === 'images' ? 'Images' : 'Captions'}
+                {' ▾'}
               </button>
               {filterOpen && (
                 <div className="absolute top-full left-0 mt-1 z-20 bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden shadow-xl">
