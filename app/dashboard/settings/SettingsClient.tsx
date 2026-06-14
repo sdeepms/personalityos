@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Check } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/browser'
 
@@ -110,6 +110,8 @@ export default function SettingsClient() {
   const [styleSaved, setStyleSaved] = useState(false)
   const [styleError, setStyleError] = useState<string | null>(null)
   const [originalStyle, setOriginalStyle] = useState({ colorPalette: '', styleModel: 'nano-banana-edit' })
+
+  const [modalImageUrl, setModalImageUrl] = useState<string | null>(null)
 
   useEffect(() => {
     if (!characterId) { setLoadError('No character ID.'); setLoading(false); return }
@@ -364,12 +366,18 @@ export default function SettingsClient() {
             <div className="flex flex-row flex-wrap gap-3">
               {existingRefs.map((ref, i) => (
                 <div key={i} className="relative flex-shrink-0">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={`${WORKER_URL}/files/${ref.url}`}
-                    alt={`Reference ${i + 1}`}
-                    className="h-32 w-32 rounded-lg border border-zinc-700 object-cover object-top"
-                  />
+                  <div
+                    className="relative cursor-pointer group"
+                    onClick={() => setModalImageUrl(`${WORKER_URL}/files/${ref.url}`)}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`${WORKER_URL}/files/${ref.url}`}
+                      alt={`Reference ${i + 1}`}
+                      className="h-32 w-32 rounded-lg border border-zinc-700 object-cover object-top"
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20
+                                    rounded-lg transition-colors" />
+                  </div>
                   {ref.is_primary && (
                     <span className="absolute bottom-1 left-1 rounded bg-indigo-600/80 px-1 py-0.5 text-[9px] font-medium text-white">
                       Primary
@@ -615,6 +623,33 @@ export default function SettingsClient() {
 
         <div className="pb-8" />
       </main>
+
+      {modalImageUrl && (
+        <div
+          className="fixed inset-0 bg-black/90 z-50
+                     flex items-center justify-center p-4"
+          onClick={() => setModalImageUrl(null)}>
+          <div
+            className="relative max-w-lg w-full"
+            onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setModalImageUrl(null)}
+              className="absolute top-3 right-3 z-10 h-8 w-8
+                         rounded-full bg-black/60 border border-white/20
+                         text-white flex items-center justify-center
+                         hover:bg-black">
+              <X className="h-4 w-4" />
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={modalImageUrl}
+              alt="Reference photo"
+              className="w-full rounded-xl object-contain max-h-[80vh]"
+            />
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
