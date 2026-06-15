@@ -1058,20 +1058,15 @@ export default function ChatClient() {
       setGenerationCount(prev => prev + 1)
       setTimeout(() => textareaRef.current?.focus(), 150)
 
-      // Background: upload binary to R2 via Worker, then swap to permanent URL
+      // Background: send cdn_url to Worker for R2 upload, then swap to permanent URL
       if (generationId) {
         ;(async () => {
           try {
             console.log('[save-to-r2] firing, generationId:', generationId, 'cdnUrl:', cdnUrl)
-            const imgRes = await fetch(cdnUrl)
-            if (!imgRes.ok) return
-            const blob = await imgRes.blob()
-            const fd   = new FormData()
-            fd.append('image', blob, 'image.png')
             const saveRes = await fetch(`${WORKER_URL}/api/generations/${generationId}/save-to-r2`, {
               method:  'POST',
-              headers: { Authorization: `Bearer ${authToken}` },
-              body:    fd,
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+              body:    JSON.stringify({ cdn_url: cdnUrl }),
             })
             if (!saveRes.ok) return
             const saveJson = await saveRes.json() as { permanent_url?: string }

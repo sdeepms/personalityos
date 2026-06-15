@@ -193,16 +193,27 @@ generations.post('/:id/save-to-r2', async (c) => {
       return c.json({ error: 'Generation not found', code: 'NOT_FOUND' }, 404)
     }
 
-    // Accept multipart/form-data with field 'image'
-    const formData  = await c.req.formData()
-    const imageFile = formData.get('image')
-
-    if (!imageFile || typeof imageFile === 'string') {
-      return c.json({ error: 'image field required', code: 'BAD_REQUEST' }, 400)
+    // Accept JSON body: { cdn_url: string }
+    let body: { cdn_url?: string }
+    try {
+      body = await c.req.json()
+    } catch {
+      return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
     }
 
-    const r2Path     = `generations/${userId}/${row.character_id}/${generationId}.png`
-    const buffer     = await (imageFile as File).arrayBuffer()
+    if (!body.cdn_url) {
+      return c.json({ error: 'cdn_url required', code: 'BAD_REQUEST' }, 400)
+    }
+
+    console.log('[generations/save-to-r2] fetching from cdn_url:', body.cdn_url)
+    const imgRes = await fetch(body.cdn_url)
+    if (!imgRes.ok) {
+      console.error('[generations/save-to-r2] cdn fetch failed:', imgRes.status, imgRes.statusText)
+      return c.json({ error: `CDN fetch failed: ${imgRes.status}`, code: 'CDN_FETCH_FAILED' }, 500)
+    }
+
+    const r2Path = `generations/${userId}/${row.character_id}/${generationId}.png`
+    const buffer = await imgRes.arrayBuffer()
 
     await c.env.STORAGE.put(r2Path, buffer, {
       httpMetadata: { contentType: 'image/png' },
