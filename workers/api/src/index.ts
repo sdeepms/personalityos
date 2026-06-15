@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { authMiddleware } from './middleware/auth'
 import { characters } from './routes/characters'
 import { chat } from './routes/chat'
-import { generate, generations } from './routes/generate'
+import { generate } from './routes/generate'
 import { library } from './routes/library'
 
 export type Env = {
@@ -110,7 +110,6 @@ app.use('/api/*', authMiddleware)
 app.route('/api/characters', characters)
 app.route('/api/chat', chat)
 app.route('/api/generate', generate)
-app.route('/api/generations', generations)
 app.route('/api/library', library)
 
 export default app

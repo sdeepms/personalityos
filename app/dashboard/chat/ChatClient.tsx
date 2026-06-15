@@ -1046,43 +1046,16 @@ export default function ChatClient() {
 
       const imageTimeS = ((Date.now() - start) / 1000).toFixed(1)
       const totalTimeS = ((Date.now() - generationStart) / 1000).toFixed(1)
-      const cdnUrl      = json.data!.image_url
-      const generationId = json.data!.generation_id
+      const imageUrl    = resolveImageUrl(json.data!.image_url)
 
-      // Show CDN image immediately
+      // Show image immediately (permanent R2 URL or CDN fallback)
       setGenerations(prev => prev.map(g =>
         g.localId === localId
-          ? { ...g, imageUrl: cdnUrl, imageLoading: false, status: 'done', imageTimeS, totalTimeS }
+          ? { ...g, imageUrl, imageLoading: false, status: 'done', imageTimeS, totalTimeS }
           : g
       ))
       setGenerationCount(prev => prev + 1)
       setTimeout(() => textareaRef.current?.focus(), 150)
-
-      // Background: send cdn_url to Worker for R2 upload, then swap to permanent URL
-      if (generationId) {
-        ;(async () => {
-          try {
-            console.log('[save-to-r2] firing, generationId:', generationId, 'cdnUrl:', cdnUrl)
-            const saveRes = await fetch(`${WORKER_URL}/api/generations/${generationId}/save-to-r2`, {
-              method:  'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-              body:    JSON.stringify({ cdn_url: cdnUrl }),
-            })
-            if (!saveRes.ok) return
-            const saveJson = await saveRes.json() as { permanent_url?: string }
-            if (saveJson.permanent_url) {
-              setGenerations(prev => prev.map(g =>
-                g.localId === localId
-                  ? { ...g, imageUrl: `${WORKER_URL}${saveJson.permanent_url}` }
-                  : g
-              ))
-            }
-          } catch (err) {
-            console.error('[save-to-r2] VISIBLE FAILURE:', err)
-            // Also log the response status if available
-          }
-        })()
-      }
 
     } catch {
       setGenerations(prev => prev.map(g =>

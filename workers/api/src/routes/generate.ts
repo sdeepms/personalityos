@@ -136,17 +136,38 @@ generate.post('/image', async (c) => {
     })
     console.log('[generate/image] generation done, outputUrl:', result.outputUrl, 'durationMs:', result.durationMs)
 
-    // 6. Save completed row
+    // 6. Pre-generate row ID and attempt server-side R2 save
+    const generationId = crypto.randomUUID()
+    let finalImageUrl = result.outputUrl
+    try {
+      const imgRes = await fetch(result.outputUrl)
+      if (imgRes.ok) {
+        const buffer = await imgRes.arrayBuffer()
+        const r2Path = `generations/${userId}/${character_id}/${generationId}.png`
+        await c.env.STORAGE.put(r2Path, buffer, {
+          httpMetadata: { contentType: 'image/png' },
+        })
+        finalImageUrl = `/files/${r2Path}`
+        console.log('[generate/image] saved to R2:', finalImageUrl)
+      } else {
+        console.warn('[generate/image] CDN fetch failed, using CDN URL:', imgRes.status)
+      }
+    } catch (r2Err) {
+      console.warn('[generate/image] R2 save failed, using CDN URL:', r2Err)
+    }
+
+    // 7. Save completed row
     const { data: generation, error: insertError } = await db(c.env)
       .from('generations')
       .insert({
+        id: generationId,
         character_id,
         user_id: userId,
         generation_type: 'image',
         platform,
         user_prompt: user_prompt ?? image_description,
         correlation_id: correlation_id || null,
-        image_url: result.outputUrl,
+        image_url: finalImageUrl,
         provider: result.provider,
         model_used: result.model,
         generation_time_ms: result.durationMs,
@@ -157,10 +178,10 @@ generate.post('/image', async (c) => {
 
     if (insertError) {
       console.error('[generate/image] insert error (returning image anyway):', insertError)
-      return c.json({ data: { image_url: result.outputUrl, generation_id: null } }, 201)
+      return c.json({ data: { image_url: finalImageUrl, generation_id: null } }, 201)
     }
 
-    return c.json({ data: { image_url: result.outputUrl, generation_id: generation.id } }, 201)
+    return c.json({ data: { image_url: finalImageUrl, generation_id: generation.id } }, 201)
 
   } catch (err) {
     console.error('[generate/image] unhandled error:', err)
@@ -168,69 +189,6 @@ generate.post('/image', async (c) => {
       error: err instanceof Error ? err.message : 'Unknown error',
       code: 'GENERATION_FAILED',
     }, 500)
-  }
-})
-
-// ─── Generations sub-router (mounted at /api/generations in index.ts) ─────────
-
-export const generations = new Hono<{ Bindings: Env; Variables: Variables }>()
-
-// POST /api/generations/:id/save-to-r2
-generations.post('/:id/save-to-r2', async (c) => {
-  const userId      = c.get('userId')
-  const generationId = c.req.param('id')
-
-  try {
-    // Verify row belongs to this user
-    const { data: row, error: rowError } = await db(c.env)
-      .from('generations')
-      .select('id, character_id')
-      .eq('id', generationId)
-      .eq('user_id', userId)
-      .single()
-
-    if (rowError || !row) {
-      return c.json({ error: 'Generation not found', code: 'NOT_FOUND' }, 404)
-    }
-
-    // Accept JSON body: { cdn_url: string }
-    let body: { cdn_url?: string }
-    try {
-      body = await c.req.json()
-    } catch {
-      return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
-    }
-
-    if (!body.cdn_url) {
-      return c.json({ error: 'cdn_url required', code: 'BAD_REQUEST' }, 400)
-    }
-
-    console.log('[generations/save-to-r2] fetching from cdn_url:', body.cdn_url)
-    const imgRes = await fetch(body.cdn_url)
-    if (!imgRes.ok) {
-      console.error('[generations/save-to-r2] cdn fetch failed:', imgRes.status, imgRes.statusText)
-      return c.json({ error: `CDN fetch failed: ${imgRes.status}`, code: 'CDN_FETCH_FAILED' }, 500)
-    }
-
-    const r2Path = `generations/${userId}/${row.character_id}/${generationId}.png`
-    const buffer = await imgRes.arrayBuffer()
-
-    await c.env.STORAGE.put(r2Path, buffer, {
-      httpMetadata: { contentType: 'image/png' },
-    })
-
-    const permanentUrl = `/files/${r2Path}`
-
-    await db(c.env)
-      .from('generations')
-      .update({ image_url: permanentUrl })
-      .eq('id', generationId)
-
-    return c.json({ permanent_url: permanentUrl })
-
-  } catch (err) {
-    console.error('[generations/save-to-r2] error:', err)
-    return c.json({ error: 'Failed to save to R2', code: 'SAVE_FAILED' }, 500)
   }
 })
 
