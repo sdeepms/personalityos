@@ -1062,6 +1062,7 @@ export default function ChatClient() {
       if (generationId) {
         ;(async () => {
           try {
+            console.log('[save-to-r2] firing, generationId:', generationId, 'cdnUrl:', cdnUrl)
             const imgRes = await fetch(cdnUrl)
             if (!imgRes.ok) return
             const blob = await imgRes.blob()
@@ -1082,7 +1083,8 @@ export default function ChatClient() {
               ))
             }
           } catch (err) {
-            console.error('[save-to-r2] silent failure:', err)
+            console.error('[save-to-r2] VISIBLE FAILURE:', err)
+            // Also log the response status if available
           }
         })()
       }
