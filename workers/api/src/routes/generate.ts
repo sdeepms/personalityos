@@ -171,3 +171,55 @@ generate.post('/image', async (c) => {
   }
 })
 
+// ─── Generations sub-router (mounted at /api/generations in index.ts) ─────────
+
+export const generations = new Hono<{ Bindings: Env; Variables: Variables }>()
+
+// POST /api/generations/:id/save-to-r2
+generations.post('/:id/save-to-r2', async (c) => {
+  const userId      = c.get('userId')
+  const generationId = c.req.param('id')
+
+  try {
+    // Verify row belongs to this user
+    const { data: row, error: rowError } = await db(c.env)
+      .from('generations')
+      .select('id, character_id')
+      .eq('id', generationId)
+      .eq('user_id', userId)
+      .single()
+
+    if (rowError || !row) {
+      return c.json({ error: 'Generation not found', code: 'NOT_FOUND' }, 404)
+    }
+
+    // Accept multipart/form-data with field 'image'
+    const formData  = await c.req.formData()
+    const imageFile = formData.get('image')
+
+    if (!imageFile || typeof imageFile === 'string') {
+      return c.json({ error: 'image field required', code: 'BAD_REQUEST' }, 400)
+    }
+
+    const r2Path     = `generations/${userId}/${row.character_id}/${generationId}.png`
+    const buffer     = await (imageFile as File).arrayBuffer()
+
+    await c.env.STORAGE.put(r2Path, buffer, {
+      httpMetadata: { contentType: 'image/png' },
+    })
+
+    const permanentUrl = `/files/${r2Path}`
+
+    await db(c.env)
+      .from('generations')
+      .update({ image_url: permanentUrl })
+      .eq('id', generationId)
+
+    return c.json({ permanent_url: permanentUrl })
+
+  } catch (err) {
+    console.error('[generations/save-to-r2] error:', err)
+    return c.json({ error: 'Failed to save to R2', code: 'SAVE_FAILED' }, 500)
+  }
+})
+
