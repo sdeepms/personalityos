@@ -136,24 +136,23 @@ generate.post('/image', async (c) => {
     })
     console.log('[generate/image] generation done, outputUrl:', result.outputUrl, 'durationMs:', result.durationMs)
 
-    // 6. Pre-generate row ID and attempt server-side R2 save
+    // 6. Pre-generate row ID and save to R2 via base64 or CDN fallback
     const generationId = crypto.randomUUID()
+    const r2Path = `generations/${userId}/${character_id}/${generationId}.png`
     let finalImageUrl = result.outputUrl
-    try {
-      const imgRes = await fetch(result.outputUrl)
-      if (imgRes.ok) {
-        const buffer = await imgRes.arrayBuffer()
-        const r2Path = `generations/${userId}/${character_id}/${generationId}.png`
+    if (result.imageBase64) {
+      try {
+        const buffer = Uint8Array.from(atob(result.imageBase64), c => c.charCodeAt(0)).buffer
         await c.env.STORAGE.put(r2Path, buffer, {
           httpMetadata: { contentType: 'image/png' },
         })
         finalImageUrl = `/files/${r2Path}`
-        console.log('[generate/image] saved to R2:', finalImageUrl)
-      } else {
-        console.warn('[generate/image] CDN fetch failed, using CDN URL:', imgRes.status)
+        console.log('[generate/image] saved base64 to R2:', finalImageUrl)
+      } catch (r2Err) {
+        console.warn('[generate/image] R2 save failed, using CDN URL:', r2Err)
       }
-    } catch (r2Err) {
-      console.warn('[generate/image] R2 save failed, using CDN URL:', r2Err)
+    } else {
+      console.log('[generate/image] no base64, using CDN URL')
     }
 
     // 7. Save completed row

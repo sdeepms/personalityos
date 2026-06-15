@@ -37,6 +37,7 @@ type MuAPIGenerateResponse = { request_id: string }
 type MuAPIStatusResponse = {
   status: 'processing' | 'completed' | 'failed'
   outputs?: string[]
+  output?: { url: string; base64?: string }
   error?: string
 }
 
@@ -137,6 +138,7 @@ export class MuAPIAdapter implements GenerationProvider {
     // Step 3 — poll for completion
     let attempts = 0
     let imageUrl: string | null = null
+    let imageBase64: string | undefined
 
     while (attempts < MAX_ATTEMPTS) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
@@ -153,8 +155,11 @@ export class MuAPIAdapter implements GenerationProvider {
       const status = await statusRes.json() as MuAPIStatusResponse
 
       if (status.status === 'completed') {
-        if (!status.outputs?.[0]) throw new Error('MuAPI completed but returned no image URL')
-        imageUrl = status.outputs[0]
+        const outputUrl = status.output?.url ?? status.outputs?.[0]
+        const imageBase64Result = status.output?.base64 ?? null
+        if (!outputUrl) throw new Error('MuAPI completed but returned no image URL')
+        imageUrl = outputUrl
+        imageBase64 = imageBase64Result ?? undefined
         break
       }
 
@@ -169,6 +174,7 @@ export class MuAPIAdapter implements GenerationProvider {
 
     return {
       outputUrl: imageUrl,
+      imageBase64,
       provider: 'muapi',
       model: model.id,
       durationMs: Date.now() - startMs,

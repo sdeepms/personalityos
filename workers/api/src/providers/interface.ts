@@ -14,6 +14,7 @@ export interface ImageOptions {
 
 export interface GenerationResult {
   outputUrl: string
+  imageBase64?: string
   provider: string
   model: string
   durationMs: number
