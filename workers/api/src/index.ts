@@ -16,6 +16,9 @@ export type Env = {
   ANTHROPIC_API_KEY: string
   MUAPI_API_KEY: string
   POSTHOG_API_KEY: string
+  R2_ACCESS_KEY_ID: string
+  R2_SECRET_ACCESS_KEY: string
+  R2_ACCOUNT_ID: string
   // Vars — set in wrangler.toml [vars]
   LLM_PROVIDER: string
   ALLOWED_ORIGIN: string
@@ -40,7 +43,7 @@ app.use('*', (c, next) => {
     origin: (origin) => (origins.includes(origin) ? origin : null),
     credentials: true,
     allowHeaders: ['Content-Type', 'Authorization'],
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   })(c, next)
 })
 
@@ -110,6 +113,7 @@ app.use('/api/*', authMiddleware)
 app.route('/api/characters', characters)
 app.route('/api/chat', chat)
 app.route('/api/generate', generate)
+app.route('/api/generations', generate)
 app.route('/api/library', library)
 
 export default app

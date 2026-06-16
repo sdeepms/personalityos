@@ -6,6 +6,7 @@ import Link from 'next/link'
 import {
   X, Download, Copy, Check, Loader2, FolderOpen,
   Search, Settings, ChevronLeft, ChevronRight, ImageOff,
+  CloudUpload, CloudCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -71,6 +72,9 @@ const PLATFORM_ASPECT: Record<string, string> = {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
+
+const isSaved = (url: string | null) =>
+  !!url && (url.startsWith('/files/') || url.includes('/files/'))
 
 function formatRelativeDate(dateString: string): string {
   const date     = new Date(dateString)
@@ -234,6 +238,40 @@ function OverlayDownload({ imageUrl }: { imageUrl: string }) {
   )
 }
 
+function SaveIconBtn({
+  generationId,
+  imageUrl,
+  isSaving,
+  isFailed,
+  onSave,
+}: {
+  generationId: string
+  imageUrl: string
+  isSaving: boolean
+  isFailed: boolean
+  onSave: (id: string) => void
+}) {
+  const saved = isSaved(imageUrl)
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); if (!saved && !isSaving) onSave(generationId) }}
+      title={saved ? 'Saved permanently' : 'Expires in 30 days — click to save'}
+      disabled={isSaving || saved}
+      className="flex h-7 w-7 items-center justify-center rounded border border-white/20 bg-black/50 backdrop-blur-sm transition-colors hover:bg-black/70 disabled:opacity-60"
+    >
+      {isSaving ? (
+        <Loader2 size={11} className="animate-spin text-white/80" />
+      ) : isFailed ? (
+        <CloudUpload size={11} className="text-red-400" />
+      ) : saved ? (
+        <CloudCheck size={11} className="text-green-400" />
+      ) : (
+        <CloudUpload size={11} className="text-amber-400" />
+      )}
+    </button>
+  )
+}
+
 // ─── Card skeletons ────────────────────────────────────────────────────────────
 
 function CardSkeletonGrid() {
@@ -262,7 +300,14 @@ function CardSkeletonGrid() {
 
 // ─── Image card (overlay design, carousel support) ────────────────────────────
 
-function ImageCard({ group, onClick, imageOnly }: { group: GenerationGroup; onClick: () => void; imageOnly?: boolean }) {
+function ImageCard({ group, onClick, imageOnly, savingIds, failedSaveIds, onSave }: {
+  group: GenerationGroup
+  onClick: () => void
+  imageOnly?: boolean
+  savingIds: Set<string>
+  failedSaveIds: Set<string>
+  onSave: (generationId: string) => void
+}) {
   const [activeIndex,  setActiveIndex]  = useState(0)
   const [failedImages, setFailedImages] = useState<Set<number>>(new Set())
 
@@ -351,6 +396,15 @@ function ImageCard({ group, onClick, imageOnly }: { group: GenerationGroup; onCl
           </p>
         )}
         <div className="flex gap-1.5" onClick={e => e.stopPropagation()}>
+          {current?.image_url && !currentFailed && (
+            <SaveIconBtn
+              generationId={current.id}
+              imageUrl={current.image_url}
+              isSaving={savingIds.has(current.id)}
+              isFailed={failedSaveIds.has(current.id)}
+              onSave={onSave}
+            />
+          )}
           {current?.image_url && !currentFailed && <OverlayDownload imageUrl={current.image_url} />}
           {!imageOnly && caption && <OverlayCopy text={caption} />}
         </div>
@@ -571,7 +625,7 @@ export default function LibraryClient() {
   const [meta,          setMeta]          = useState<LibraryMeta>({ total: 0, page: 1, has_more: false })
   const [loading,       setLoading]       = useState(true)
   const [error,         setError]         = useState<string | null>(null)
-  const [filter,         setFilter]         = useState<'all' | 'images' | 'captions'>('all')
+  const [filter,         setFilter]         = useState<'all' | 'images' | 'captions' | 'saved'>('all')
   const [selectedGroup,  setSelectedGroup]  = useState<GenerationGroup | null>(null)
   const [modalMode,      setModalMode]      = useState<'full' | 'caption-only'>('full')
   const [loadingMore,    setLoadingMore]    = useState(false)
@@ -579,6 +633,9 @@ export default function LibraryClient() {
   const [avatarError,   setAvatarError]   = useState(false)
   const [searchQuery,   setSearchQuery]   = useState('')
   const [filterOpen,    setFilterOpen]    = useState(false)
+  const [savingIds,     setSavingIds]     = useState<Set<string>>(new Set())
+  const [failedSaveIds, setFailedSaveIds] = useState<Set<string>>(new Set())
+  const [bannerDismissed, setBannerDismissed] = useState(false)
 
   const fetchLibrary = useCallback(async (jwt: string, page: number, append = false) => {
     const res = await fetch(
@@ -635,6 +692,51 @@ export default function LibraryClient() {
     finally { setLoading(false) }
   }
 
+  async function saveGeneration(generationId: string) {
+    if (!token || savingIds.has(generationId)) return
+    const gen = generations.find(g => g.id === generationId)
+    if (!gen?.image_url || isSaved(gen.image_url)) return
+
+    setSavingIds(prev => new Set([...prev, generationId]))
+    try {
+      const presignRes = await fetch(`${WORKER_URL}/api/generations/${generationId}/presign-upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!presignRes.ok) throw new Error(`Presign failed: ${presignRes.status}`)
+      const { upload_url, r2_path } = await presignRes.json() as { upload_url: string; r2_path: string }
+
+      const imgRes = await fetch(gen.image_url)
+      if (!imgRes.ok) throw new Error(`CDN fetch failed: ${imgRes.status}`)
+      const blob = await imgRes.blob()
+
+      const putRes = await fetch(upload_url, {
+        method: 'PUT',
+        body: blob,
+        headers: { 'Content-Type': 'image/png' },
+      })
+      if (!putRes.ok) throw new Error(`R2 PUT failed: ${putRes.status}`)
+
+      const confirmRes = await fetch(`${WORKER_URL}/api/generations/${generationId}/confirm-save`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ r2_path }),
+      })
+      if (!confirmRes.ok) throw new Error(`Confirm save failed: ${confirmRes.status}`)
+      const { permanent_url } = await confirmRes.json() as { permanent_url: string }
+
+      setGenerations(prev => prev.map(g => g.id === generationId ? { ...g, image_url: permanent_url } : g))
+    } catch (err) {
+      console.error('[LibraryClient] saveGeneration error:', err)
+      setFailedSaveIds(prev => new Set([...prev, generationId]))
+      setTimeout(() => {
+        setFailedSaveIds(prev => { const next = new Set(prev); next.delete(generationId); return next })
+      }, 2000)
+    } finally {
+      setSavingIds(prev => { const next = new Set(prev); next.delete(generationId); return next })
+    }
+  }
+
   // Avatar
   let avatarUrl: string | null = null
   if (character && !avatarError) {
@@ -650,10 +752,16 @@ export default function LibraryClient() {
     ? allGroups
     : filter === 'images'
     ? allGroups.filter(g => g.images.length > 0 && g.images.some(img => img.image_url))
-    : allGroups.filter(g => g.caption !== null && !!g.caption?.text_output)
+    : filter === 'captions'
+    ? allGroups.filter(g => g.caption !== null && !!g.caption?.text_output)
+    : allGroups.filter(g => g.images.some(img => isSaved(img.image_url)))
   const filteredGroups = searchQuery.trim()
     ? tabFiltered.filter(g => g.caption?.text_output?.toLowerCase().includes(searchQuery.toLowerCase()))
     : tabFiltered
+
+  const hasUnsavedImages = filteredGroups.some(g =>
+    g.images.some(img => img.image_url && !isSaved(img.image_url))
+  )
 
   // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
@@ -774,7 +882,7 @@ export default function LibraryClient() {
           <div className="md:order-1 flex items-center gap-3 relative">
             {/* Desktop filter tabs */}
             <div className="hidden md:flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
-              {(['all', 'images', 'captions'] as const).map(tab => (
+              {(['all', 'images', 'captions', 'saved'] as const).map(tab => (
                 <button key={tab}
                   onClick={() => setFilter(tab)}
                   className={`px-3 py-1 rounded-md text-sm capitalize transition-colors ${
@@ -791,12 +899,12 @@ export default function LibraryClient() {
             <div className="md:hidden relative">
               <button onClick={() => setFilterOpen(v => !v)}
                 className="px-3 py-1.5 rounded-lg text-sm bg-zinc-900 border border-zinc-700 text-white font-medium">
-                {filter === 'all' ? 'All' : filter === 'images' ? 'Images' : 'Captions'}
+                {filter === 'all' ? 'All' : filter === 'images' ? 'Images' : filter === 'captions' ? 'Captions' : 'Saved'}
                 {' ▾'}
               </button>
               {filterOpen && (
                 <div className="absolute top-full left-0 mt-1 z-20 bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden shadow-xl">
-                  {(['all', 'images', 'captions'] as const).map(tab => (
+                  {(['all', 'images', 'captions', 'saved'] as const).map(tab => (
                     <button key={tab}
                       onClick={() => { setFilter(tab); setFilterOpen(false) }}
                       className={`block w-full text-left px-4 py-2 text-sm ${
@@ -811,6 +919,23 @@ export default function LibraryClient() {
           </div>
 
         </div>
+
+        {/* ── Caution banner ── */}
+        {!bannerDismissed && hasUnsavedImages && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-950/50 px-4 py-3">
+            <span className="shrink-0 text-amber-400">⚠️</span>
+            <p className="flex-1 text-sm text-amber-300">
+              Some images expire in 30 days. Click the save icon to permanently store them.
+            </p>
+            <button
+              onClick={() => setBannerDismissed(true)}
+              className="shrink-0 text-amber-400 transition-colors hover:text-amber-200"
+              aria-label="Dismiss banner"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
         {/* ── Grid ── */}
         {filteredGroups.length === 0 ? (
@@ -830,14 +955,15 @@ export default function LibraryClient() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredGroups.map((group, i) => {
                 const key = group.correlation_id ?? `${group.created_at}-${i}`
-                if (filter === 'images') {
-                  return <ImageCard key={key} group={group} imageOnly onClick={() => { setModalMode('full'); setSelectedGroup(group) }} />
+                const saveProps = { savingIds, failedSaveIds, onSave: saveGeneration }
+                if (filter === 'images' || filter === 'saved') {
+                  return <ImageCard key={key} group={group} imageOnly onClick={() => { setModalMode('full'); setSelectedGroup(group) }} {...saveProps} />
                 }
                 const showAsCaption = filter === 'captions' || group.images.length === 0
                 return showAsCaption && group.caption
                   ? <CaptionCard key={key} group={group} onClick={() => { setModalMode('caption-only'); setSelectedGroup(group) }} />
                   : group.images.length > 0
-                  ? <ImageCard key={key} group={group} onClick={() => { setModalMode('full'); setSelectedGroup(group) }} />
+                  ? <ImageCard key={key} group={group} onClick={() => { setModalMode('full'); setSelectedGroup(group) }} {...saveProps} />
                   : null
               })}
             </div>

@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.1",
+    "aws4fetch": "^1.0.20",
     "hono": "^4.7.11",
     "nanoid": "^5.1.11"
   },

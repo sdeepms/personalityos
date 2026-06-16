@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { createClient } from '@supabase/supabase-js'
+import { AwsClient } from 'aws4fetch'
 import type { Env, Variables } from '../index'
 import { getImageProvider } from '../providers/factory'
 import { assembleImagePrompt } from '../services/prompt-builder'
@@ -189,5 +190,85 @@ generate.post('/image', async (c) => {
       code: 'GENERATION_FAILED',
     }, 500)
   }
+})
+
+// POST /api/generations/:id/presign-upload
+generate.post('/:id/presign-upload', async (c) => {
+  const userId = c.get('userId')
+  const generationId = c.req.param('id')
+
+  const { data: generation, error } = await db(c.env)
+    .from('generations')
+    .select('id, character_id')
+    .eq('id', generationId)
+    .eq('user_id', userId)
+    .single<{ id: string; character_id: string }>()
+
+  if (error || !generation) {
+    return c.json({ error: 'Generation not found', code: 'NOT_FOUND' }, 404)
+  }
+
+  const r2Path = `generations/${userId}/${generation.character_id}/${generationId}.png`
+
+  const r2 = new AwsClient({
+    accessKeyId: c.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: c.env.R2_SECRET_ACCESS_KEY,
+    service: 's3',
+    region: 'auto',
+  })
+
+  const url = new URL(`https://${c.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/personalityos-storage/${r2Path}`)
+  url.searchParams.set('X-Amz-Expires', '900')
+
+  const signed = await r2.sign(
+    new Request(url.toString(), { method: 'PUT' }),
+    { aws: { signQuery: true } }
+  )
+
+  return c.json({ upload_url: signed.url, r2_path: r2Path })
+})
+
+// PATCH /api/generations/:id/confirm-save
+generate.patch('/:id/confirm-save', async (c) => {
+  const userId = c.get('userId')
+  const generationId = c.req.param('id')
+
+  const { data: generation, error: fetchError } = await db(c.env)
+    .from('generations')
+    .select('id')
+    .eq('id', generationId)
+    .eq('user_id', userId)
+    .single<{ id: string }>()
+
+  if (fetchError || !generation) {
+    return c.json({ error: 'Generation not found', code: 'NOT_FOUND' }, 404)
+  }
+
+  let body: { r2_path?: string }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
+  }
+
+  const { r2_path } = body
+  if (!r2_path) {
+    return c.json({ error: 'r2_path is required', code: 'BAD_REQUEST' }, 400)
+  }
+
+  const permanentUrl = '/files/' + r2_path
+
+  const { error: updateError } = await db(c.env)
+    .from('generations')
+    .update({ image_url: permanentUrl })
+    .eq('id', generationId)
+    .eq('user_id', userId)
+
+  if (updateError) {
+    console.error('[confirm-save] update error:', updateError)
+    return c.json({ error: 'Failed to update generation', code: 'UPDATE_FAILED' }, 500)
+  }
+
+  return c.json({ permanent_url: permanentUrl })
 })
 
