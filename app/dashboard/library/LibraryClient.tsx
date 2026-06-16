@@ -74,7 +74,13 @@ const PLATFORM_ASPECT: Record<string, string> = {
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 const isSaved = (url: string | null) =>
-  !!url && (url.startsWith('/files/') || url.includes('/files/'))
+  !!url && url.startsWith('/files/')
+
+const resolveImageUrl = (url: string | null): string | null => {
+  if (!url) return null
+  if (url.startsWith('/files/')) return `${WORKER_URL}${url}`
+  return url
+}
 
 function formatRelativeDate(dateString: string): string {
   const date     = new Date(dateString)
@@ -337,7 +343,7 @@ function ImageCard({ group, onClick, imageOnly, savingIds, failedSaveIds, onSave
         // eslint-disable-next-line @next/next/no-img-element
         <img
           key={current.id}
-          src={current.image_url}
+          src={resolveImageUrl(current.image_url) ?? ''}
           alt="Generated"
           className={`w-full object-cover ${aspectClass}`}
           onError={markFailed(activeIndex)}
@@ -405,7 +411,7 @@ function ImageCard({ group, onClick, imageOnly, savingIds, failedSaveIds, onSave
               onSave={onSave}
             />
           )}
-          {current?.image_url && !currentFailed && <OverlayDownload imageUrl={current.image_url} />}
+          {current?.image_url && !currentFailed && <OverlayDownload imageUrl={resolveImageUrl(current.image_url)!} />}
           {!imageOnly && caption && <OverlayCopy text={caption} />}
         </div>
       </div>
@@ -483,7 +489,7 @@ function LibraryModal({ group, showImage, onClose }: { group: GenerationGroup; s
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={imageUrl ?? undefined}
+              src={resolveImageUrl(imageUrl) ?? undefined}
               alt="Generated"
               className="block w-full"
               style={{ maxHeight: '75vh', objectFit: 'contain', background: '#000' }}
