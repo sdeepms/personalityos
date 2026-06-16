@@ -638,7 +638,6 @@ export default function LibraryClient() {
   const [token,         setToken]         = useState<string | null>(null)
   const [avatarError,   setAvatarError]   = useState(false)
   const [searchQuery,   setSearchQuery]   = useState('')
-  const [filterOpen,    setFilterOpen]    = useState(false)
   const [savingIds,     setSavingIds]     = useState<Set<string>>(new Set())
   const [failedSaveIds, setFailedSaveIds] = useState<Set<string>>(new Set())
   const [bannerDismissed, setBannerDismissed] = useState(false)
@@ -864,11 +863,11 @@ export default function LibraryClient() {
           </span>
         </div>
 
-        {/* ── Filter tabs + inline search ── */}
-        <div className="flex flex-col md:flex-row md:items-center gap-2 mb-4">
+        {/* ── Search + filter tabs ── */}
+        <div className="flex flex-col gap-2 mb-4">
 
-          {/* Search — full width on mobile, flex-1 on desktop */}
-          <div className="relative w-full md:flex-1 md:order-2">
+          {/* Search */}
+          <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
             <input
               type="text"
@@ -884,44 +883,19 @@ export default function LibraryClient() {
             )}
           </div>
 
-          {/* Filter controls — below search on mobile */}
-          <div className="md:order-1 flex items-center gap-3 relative">
-            {/* Desktop filter tabs */}
-            <div className="hidden md:flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
-              {(['all', 'images', 'captions', 'saved'] as const).map(tab => (
-                <button key={tab}
-                  onClick={() => setFilter(tab)}
-                  className={`px-3 py-1 rounded-md text-sm capitalize transition-colors ${
-                    filter === tab
-                      ? 'bg-zinc-700 text-white'
-                      : 'text-zinc-400 hover:text-white'
-                  }`}>
-                  {tab}
-                </button>
-              ))}
-            </div>
-
-            {/* Mobile filter button */}
-            <div className="md:hidden relative">
-              <button onClick={() => setFilterOpen(v => !v)}
-                className="px-3 py-1.5 rounded-lg text-sm bg-zinc-900 border border-zinc-700 text-white font-medium">
-                {filter === 'all' ? 'All' : filter === 'images' ? 'Images' : filter === 'captions' ? 'Captions' : 'Saved'}
-                {' ▾'}
+          {/* Filter tabs — unified for all screen sizes */}
+          <div className="flex items-center gap-1 overflow-x-auto bg-zinc-900 border border-zinc-800 rounded-lg p-1">
+            {(['all', 'images', 'captions', 'saved'] as const).map(tab => (
+              <button key={tab}
+                onClick={() => setFilter(tab)}
+                className={`shrink-0 px-3 py-1 rounded-md text-sm capitalize transition-colors ${
+                  filter === tab
+                    ? 'bg-zinc-700 text-white'
+                    : 'text-zinc-400 hover:text-white'
+                }`}>
+                {tab}
               </button>
-              {filterOpen && (
-                <div className="absolute top-full left-0 mt-1 z-20 bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden shadow-xl">
-                  {(['all', 'images', 'captions', 'saved'] as const).map(tab => (
-                    <button key={tab}
-                      onClick={() => { setFilter(tab); setFilterOpen(false) }}
-                      className={`block w-full text-left px-4 py-2 text-sm ${
-                        filter === tab ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:bg-zinc-800'
-                      }`}>
-                      {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            ))}
           </div>
 
         </div>
