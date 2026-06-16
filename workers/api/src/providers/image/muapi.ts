@@ -136,6 +136,10 @@ export class MuAPIAdapter implements GenerationProvider {
     console.log('[muapi] job submitted, request_id:', request_id)
 
     // Step 3 — poll for completion
+    return this.pollResult(request_id, startMs, model.id)
+  }
+
+  private async pollResult(request_id: string, startMs: number, modelId = 'portrait'): Promise<GenerationResult> {
     let attempts = 0
     let imageUrl: string | null = null
     let imageBase64: string | undefined
@@ -176,9 +180,55 @@ export class MuAPIAdapter implements GenerationProvider {
       outputUrl: imageUrl,
       imageBase64,
       provider: 'muapi',
-      model: model.id,
+      model: modelId,
       durationMs: Date.now() - startMs,
       costUsdCents: 0,
     }
+  }
+
+  async generatePortrait(prompt: string, aspectRatio: string): Promise<GenerationResult> {
+    const startMs = Date.now()
+    const aspectRatioStr = mapAspectRatio(aspectRatio)
+    console.log('[muapi] generatePortrait start — aspect:', aspectRatio)
+
+    const generateRes = await fetch(`${MUAPI_HOST}/api/v1/nano-banana`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': this.apiKey },
+      body: JSON.stringify({ prompt, aspect_ratio: aspectRatioStr }),
+    })
+
+    if (!generateRes.ok) {
+      const text = await generateRes.text()
+      throw new Error(`MuAPI generatePortrait failed (${generateRes.status}): ${text}`)
+    }
+
+    const { request_id } = await generateRes.json() as MuAPIGenerateResponse
+    if (!request_id) throw new Error('MuAPI did not return a request_id')
+    console.log('[muapi] generatePortrait job submitted, request_id:', request_id)
+
+    return this.pollResult(request_id, startMs, 'nano-banana')
+  }
+
+  async editPortrait(imageUrl: string, editPrompt: string, aspectRatio: string): Promise<GenerationResult> {
+    const startMs = Date.now()
+    const aspectRatioStr = mapAspectRatio(aspectRatio)
+    console.log('[muapi] editPortrait start — aspect:', aspectRatio)
+
+    const generateRes = await fetch(`${MUAPI_HOST}/api/v1/flux-2-klein-4b-turbo-edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': this.apiKey },
+      body: JSON.stringify({ prompt: editPrompt, images_list: [imageUrl], aspect_ratio: aspectRatioStr }),
+    })
+
+    if (!generateRes.ok) {
+      const text = await generateRes.text()
+      throw new Error(`MuAPI editPortrait failed (${generateRes.status}): ${text}`)
+    }
+
+    const { request_id } = await generateRes.json() as MuAPIGenerateResponse
+    if (!request_id) throw new Error('MuAPI did not return a request_id')
+    console.log('[muapi] editPortrait job submitted, request_id:', request_id)
+
+    return this.pollResult(request_id, startMs, 'flux-2-klein-4b-turbo-edit')
   }
 }

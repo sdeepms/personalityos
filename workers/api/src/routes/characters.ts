@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { createClient } from '@supabase/supabase-js'
 import type { Env, Variables } from '../index'
+import { getImageProvider } from '../providers/factory'
+import { assemblePortraitPrompt, getStyleDescription, type PortraitPromptData } from '../services/portrait-assembler'
 
 export const characters = new Hono<{ Bindings: Env; Variables: Variables }>()
 
@@ -12,6 +14,35 @@ type ReferenceImage = { url: string; pose_type: string; is_primary: boolean }
 function db(env: Env) {
   return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY)
 }
+
+// POST /api/characters/preview-portrait
+characters.post('/preview-portrait', async (c) => {
+  let body: PortraitPromptData
+  try {
+    body = await c.req.json() as PortraitPromptData
+  } catch {
+    return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
+  }
+
+  console.log('[preview-portrait] generating for type:', body.character_type)
+  const prompt = assemblePortraitPrompt(body)
+  const result = await getImageProvider(c.env).generatePortrait(prompt, '1:1')
+  return c.json({ image_url: result.outputUrl })
+})
+
+// POST /api/characters/edit-portrait
+characters.post('/edit-portrait', async (c) => {
+  let body: { current_image_url: string; edit_prompt: string }
+  try {
+    body = await c.req.json() as { current_image_url: string; edit_prompt: string }
+  } catch {
+    return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
+  }
+
+  console.log('[edit-portrait] editing image')
+  const result = await getImageProvider(c.env).editPortrait(body.current_image_url, body.edit_prompt, '1:1')
+  return c.json({ image_url: result.outputUrl })
+})
 
 // GET /api/characters
 characters.get('/', async (c) => {
@@ -36,22 +67,34 @@ characters.post('/', async (c) => {
     return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
   }
 
-  const { name, domain, gender, age_range, nationality, style_preset } = body as Record<string, string>
+  const { name, domain, gender, age_range, nationality, style_preset, character_type, store_name } = body as Record<string, string | null | undefined>
   if (!name || !domain) {
     return c.json({ error: 'name and domain are required', code: 'BAD_REQUEST' }, 400)
   }
+
+  const charType = (character_type as string | undefined) ?? 'educator'
 
   const skinTone = nationality?.toLowerCase() === 'indian' ? 'warm brown skin tone' : null
   const visual_style_prompt = [nationality, gender, age_range, skinTone, domain, 'professional, natural lighting']
     .filter(Boolean).join(', ')
 
-  const system_prompt = [
-    `You are ${name}, ${domain}.`,
-    style_preset === 'academic_accessible' ? 'Your style is formal, structured, and precise.' : '',
-    style_preset === 'engaging_explainer' ? 'Your style is conversational, example-heavy, and energetic.' : '',
-    style_preset === 'direct_mentor' ? 'Your style is authoritative, brief, and no-nonsense.' : '',
-    'You generate content in your authentic voice, staying true to your expertise and personality.',
-  ].filter(Boolean).join(' ')
+  const styleDesc = getStyleDescription(charType, style_preset as string ?? '')
+
+  let system_prompt: string
+  if (charType === 'reseller') {
+    const storeName = (store_name as string | null | undefined) ?? `${name}'s store`
+    system_prompt = `You are ${name}, a brand model for ${storeName}. You create content that showcases products in an engaging way. Your communication style is ${styleDesc}. You write captions that highlight the product, mention the price when provided, and include a clear call to action. You only use details the user provides — never invent product specifications or prices.`
+  } else if (charType === 'creator') {
+    system_prompt = `You are ${name}, a ${domain} content creator. You create content that is ${styleDesc}. Your audience connects with you personally. You share your perspective, experiences, and opinions. You write in an authentic voice that feels genuine and engaging.`
+  } else {
+    system_prompt = [
+      `You are ${name}, ${domain}.`,
+      style_preset === 'academic_accessible' ? 'Your style is formal, structured, and precise.' : '',
+      style_preset === 'engaging_explainer' ? 'Your style is conversational, example-heavy, and energetic.' : '',
+      style_preset === 'direct_mentor' ? 'Your style is authoritative, brief, and no-nonsense.' : '',
+      'You generate content in your authentic voice, staying true to your expertise and personality.',
+    ].filter(Boolean).join(' ')
+  }
 
   const prompt_dna = {
     style_modifiers: ['professional portrait photography', 'cinematic lighting', 'sharp focus', 'high detail'],
@@ -77,6 +120,8 @@ characters.post('/', async (c) => {
       dna_ready: 1,
       reference_images_ready: 0,
       reference_image_urls: '[]',
+      character_type: charType,
+      store_name: (store_name as string | null | undefined) ?? null,
     })
     .select()
     .single()

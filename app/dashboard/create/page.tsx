@@ -2,200 +2,235 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Upload, Sparkles, RefreshCw } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/browser'
 
-const DOMAIN_CHIPS = ['UPSC', 'Finance', 'Startup', 'Coaching', 'History', 'Ethics', 'Science', 'Law', 'Other']
+const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL ?? 'http://localhost:8787'
 
-const STYLE_PRESETS = [
-  {
-    id: 'engaging_explainer',
-    name: 'Engaging Explainer',
-    description: 'Conversational and example-heavy. Makes complex topics accessible.',
-  },
-  {
-    id: 'academic_accessible',
-    name: 'Academic Accessible',
-    description: 'Formal, precise, and structured with academic rigor.',
-  },
-  {
-    id: 'direct_mentor',
-    name: 'Direct Mentor',
-    description: 'Authoritative and direct. Clear guidance without unnecessary elaboration.',
-  },
+type Step = 'type' | 'form' | 'preview'
+type CharacterType = 'educator' | 'creator' | 'reseller'
+
+const EDUCATOR_CHIPS = ['UPSC', 'Finance', 'Startup', 'Coaching', 'History', 'Ethics', 'Science', 'Law', 'Other']
+const CREATOR_CHIPS = ['Startup', 'Lifestyle', 'Tech', 'Fitness', 'Fashion', 'Food', 'Travel', 'Finance', 'Other']
+const RESELLER_CATEGORIES = [
+  '👗 Fashion', '💄 Beauty', '📱 Electronics', '🍕 Food',
+  '🏠 Home & Living', '💎 Jewellery', '👟 Footwear', '📚 Books',
+  '🌿 Wellness', 'Other',
 ]
 
-type FormState = {
-  name: string
-  domain: string
-  gender: string
-  age_range: string
-  nationality: string
-  nationality_custom: string
-  style_preset: string
-}
-
-function SelectionCard({
-  label,
-  selected,
-  onClick,
-}: {
-  label: string
-  selected: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-lg border px-4 py-3 text-sm font-medium transition-colors text-left ${
-        selected
-          ? 'border-indigo-500 bg-indigo-500/10 text-white'
-          : 'border-[#262626] bg-[#141414] text-[#a1a1aa] hover:border-[#404040] hover:text-white'
-      }`}
-    >
-      {label}
-    </button>
-  )
+const STYLE_PRESETS: Record<CharacterType, Array<{ id: string; name: string; desc: string }>> = {
+  educator: [
+    { id: 'engaging_explainer', name: 'Engaging Explainer', desc: 'Conversational and example-heavy. Makes complex topics accessible.' },
+    { id: 'academic_accessible', name: 'Academic & Precise', desc: 'Formal, structured, and authoritative.' },
+    { id: 'direct_mentor', name: 'Direct Mentor', desc: 'Clear guidance without unnecessary elaboration.' },
+  ],
+  creator: [
+    { id: 'relatable', name: 'Relatable & Funny', desc: 'Casual, honest, connects through humor and real stories.' },
+    { id: 'motivational', name: 'Motivational', desc: 'Energetic and inspiring. Pushes audience to take action.' },
+    { id: 'opinion_bold', name: 'Opinion & Bold', desc: 'Takes strong stances. Not afraid to challenge norms.' },
+    { id: 'aesthetic', name: 'Aesthetic & Lifestyle', desc: 'Visual-first, curated, elegant.' },
+  ],
+  reseller: [
+    { id: 'warm', name: 'Friendly & Warm', desc: 'Approachable, personal touch. Feels like buying from a friend.' },
+    { id: 'professional', name: 'Professional', desc: 'Clean, trustworthy, business-like.' },
+    { id: 'festive', name: 'Festive & Exciting', desc: 'High energy, celebration-focused, great for sales and offers.' },
+  ],
 }
 
 export default function CreateCharacterPage() {
   const router = useRouter()
-  const [form, setForm] = useState<FormState>({
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [authToken, setAuthToken] = useState<string | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+
+  const [step, setStep] = useState<Step>('type')
+  const [characterType, setCharacterType] = useState<CharacterType | null>(null)
+
+  const [form, setForm] = useState({
     name: '',
     domain: '',
+    store_name: '',
+    product_category: '',
     gender: '',
     age_range: '',
     nationality: 'Indian',
     nationality_custom: '',
-    style_preset: 'engaging_explainer',
+    style_preset: '',
   })
+
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
+  const [previewMode, setPreviewMode] = useState<'generated' | 'uploaded'>('generated')
+  const [editPrompt, setEditPrompt] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const [uploadedPreviewUrl, setUploadedPreviewUrl] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [authChecked, setAuthChecked] = useState(false)
-  const [referenceFile, setReferenceFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [generateReference,   setGenerateReference]   = useState(false)
-  const [generatedPreviewUrl, setGeneratedPreviewUrl] = useState<string | null>(null)
-  const [generating,          setGenerating]          = useState(false)
-  const [createdCharacterId,  setCreatedCharacterId]  = useState<string | null>(null)
-  const [createdToken,        setCreatedToken]        = useState<string | null>(null)
-  const [validationError,     setValidationError]     = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [validationError, setValidationError] = useState<string | null>(null)
 
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) {
-        router.replace('/login')
-        return
-      }
-      setAuthChecked(true)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) { router.replace('/login'); return }
+      setAuthToken(session.access_token)
+      setAuthLoading(false)
     })
   }, [router])
 
-  function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
+  function setField<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  async function generateImage(charId: string, authToken: string) {
-    const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL ?? 'http://localhost:8787'
-    setGeneratedPreviewUrl(null)
-    setGenerating(true)
+  function handleTypeSelect(type: CharacterType) {
+    setCharacterType(type)
+    setForm((prev) => ({ ...prev, style_preset: '' }))
+    setStep('form')
+  }
+
+  function validateForm(): string | null {
+    if (!form.name.trim()) return 'Character name is required.'
+    if (!form.gender) return 'Gender is required.'
+    if (!form.age_range) return 'Age range is required.'
+    if (!form.style_preset) return 'Communication style is required.'
+    if (characterType === 'educator' && !form.domain.trim()) return 'Domain / Expertise is required.'
+    if (characterType === 'creator' && !form.domain.trim()) return 'Niche is required.'
+    if (characterType === 'reseller' && !form.product_category) return 'Product category is required.'
+    return null
+  }
+
+  function handleFormNext() {
+    const err = validateForm()
+    if (err) { setValidationError(err); return }
+    setValidationError(null)
+    setStep('preview')
+  }
+
+  function switchTab(mode: 'generated' | 'uploaded') {
+    setPreviewMode(mode)
+    setPreviewImageUrl(null)
+    setUploadedFile(null)
+    if (uploadedPreviewUrl) { URL.revokeObjectURL(uploadedPreviewUrl); setUploadedPreviewUrl(null) }
+  }
+
+  async function handleGeneratePortrait() {
+    if (!authToken) return
+    setPreviewLoading(true)
+    setError(null)
     try {
-      const res = await fetch(`${workerUrl}/api/generate/image`, {
+      const res = await fetch(`${WORKER_URL}/api/characters/preview-portrait`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({
-          character_id:      charId,
-          image_description: 'professional portrait headshot, front facing',
-          platform:          'instagram',
+          character_type: characterType,
+          name: form.name,
+          domain: form.domain || form.product_category,
+          store_name: form.store_name,
+          product_category: form.product_category,
+          gender: form.gender,
+          age_range: form.age_range,
+          nationality: form.nationality === 'Other' ? form.nationality_custom : form.nationality,
+          style_preset: form.style_preset,
         }),
       })
-      const data = await res.json() as { data?: { image_url: string } }
-      if (data.data?.image_url) {
-        setGeneratedPreviewUrl(data.data.image_url)
-      } else {
-        router.push(`/dashboard/chat?id=${charId}`)
-      }
-    } catch {
-      router.push(`/dashboard/chat?id=${charId}`)
+      const data = await res.json() as { image_url?: string; error?: string }
+      if (!res.ok || !data.image_url) throw new Error(data.error ?? 'Failed to generate portrait')
+      setPreviewImageUrl(data.image_url)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate portrait')
     } finally {
-      setGenerating(false)
+      setPreviewLoading(false)
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleEditPortrait() {
+    if (!authToken || !previewImageUrl || !editPrompt.trim()) return
+    setPreviewLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`${WORKER_URL}/api/characters/edit-portrait`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ current_image_url: previewImageUrl, edit_prompt: editPrompt }),
+      })
+      const data = await res.json() as { image_url?: string; error?: string }
+      if (!res.ok || !data.image_url) throw new Error(data.error ?? 'Failed to edit portrait')
+      setPreviewImageUrl(data.image_url)
+      setEditPrompt('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to edit portrait')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  async function handleCreateCharacter(skipPhoto: boolean) {
+    if (!authToken) return
+    setSubmitting(true)
     setError(null)
 
-    const name = form.name.trim()
-    const domain = form.domain.trim()
-    if (!name) return setError('Character name is required.')
-    if (!domain) return setError('Domain is required.')
-
     const nationality =
-      form.nationality === 'Other' ? form.nationality_custom.trim() || 'Other' : form.nationality
+      form.nationality === 'Other' ? form.nationality_custom || 'Other' : form.nationality
 
-    setSubmitting(true)
     try {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-
-      const workerUrl = process.env.NEXT_PUBLIC_WORKER_URL ?? 'http://localhost:8787'
-      const res = await fetch(`${workerUrl}/api/characters`, {
+      const res = await fetch(`${WORKER_URL}/api/characters`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({
-          name,
-          domain,
+          name: form.name,
+          domain: form.domain || form.product_category || form.store_name || '',
           gender: form.gender || 'neutral',
           age_range: form.age_range || '30s',
           nationality,
           style_preset: form.style_preset,
+          character_type: characterType,
+          store_name: form.store_name || null,
         }),
       })
-
       const json = await res.json() as { data?: { id: string }; error?: string }
-      if (!res.ok) { setError(json.error ?? 'Failed to create character.'); return }
+      if (!res.ok) { setError(json.error ?? 'Failed to create character.'); setSubmitting(false); return }
 
-      const newId = json.data?.id
+      const characterId = json.data?.id
+      if (!characterId) { setError('Failed to create character.'); setSubmitting(false); return }
 
-      if (referenceFile && newId) {
-        try {
-          const formData = new FormData()
-          formData.append('files', referenceFile)
-          formData.append('pose_types', JSON.stringify(['front']))
-          await fetch(`${workerUrl}/api/characters/${newId}/references`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${session.access_token}` },
-            body: formData,
-          })
-        } catch { /* navigate anyway */ }
+      if (!skipPhoto) {
+        if (previewImageUrl && previewMode === 'generated') {
+          try {
+            const imgRes = await fetch(previewImageUrl)
+            const blob = await imgRes.blob()
+            const fd = new FormData()
+            fd.append('files', blob, 'reference.jpg')
+            fd.append('pose_types', JSON.stringify(['front']))
+            await fetch(`${WORKER_URL}/api/characters/${characterId}/references`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${authToken}` },
+              body: fd,
+            })
+          } catch { /* continue anyway */ }
+        }
+
+        if (uploadedFile && previewMode === 'uploaded') {
+          try {
+            const fd = new FormData()
+            fd.append('files', uploadedFile)
+            fd.append('pose_types', JSON.stringify(['front']))
+            await fetch(`${WORKER_URL}/api/characters/${characterId}/references`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${authToken}` },
+              body: fd,
+            })
+          } catch { /* continue anyway */ }
+        }
       }
 
-      if (generateReference && !referenceFile && newId) {
-        setCreatedCharacterId(newId)
-        setCreatedToken(session.access_token)
-        setSubmitting(false)
-        await generateImage(newId, session.access_token)
-        return
-      }
-
-      router.push(newId ? `/dashboard/chat?id=${newId}` : '/dashboard')
+      router.push(`/dashboard/chat?id=${characterId}`)
     } catch {
       setError('Network error. Please try again.')
-    } finally {
       setSubmitting(false)
     }
   }
 
-  if (!authChecked) {
+  if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0a0a0a]">
         <p className="text-sm text-[#71717a]">Loading…</p>
@@ -203,14 +238,23 @@ export default function CreateCharacterPage() {
     )
   }
 
+  const backAction =
+    step === 'type'
+      ? () => router.push('/dashboard')
+      : step === 'form'
+      ? () => setStep('type')
+      : () => setStep('form')
+
+  const presets = characterType ? STYLE_PRESETS[characterType] : []
+
   return (
     <div className="min-h-screen bg-[#0a0a0a]">
       <header className="border-b border-[#262626] bg-[#0a0a0a]">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <button
             type="button"
-            onClick={() => router.push('/dashboard')}
-            className="text-sm text-[#a1a1aa] hover:text-white transition-colors"
+            onClick={backAction}
+            className="text-sm text-[#a1a1aa] transition-colors hover:text-white"
           >
             ← Back
           </button>
@@ -220,251 +264,442 @@ export default function CreateCharacterPage() {
       </header>
 
       <main className="mx-auto max-w-2xl px-4 py-10">
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Create a Character</h1>
-          <p className="mt-1 text-sm text-[#a1a1aa]">
-            Define your AI character's identity. This becomes the DNA for all content generation.
-          </p>
-        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
-          <section>
-            <label className="mb-2 block text-sm font-medium text-white">Character Name</label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setField('name', e.target.value)}
-              placeholder="e.g. Arjun"
-              className="w-full rounded-lg border border-[#262626] bg-[#141414] px-3 py-2.5 text-sm text-white placeholder:text-[#71717a] focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
-          </section>
-
-          <section>
-            <label className="mb-2 block text-sm font-medium text-white">Domain / Expertise</label>
-            <input
-              type="text"
-              value={form.domain}
-              onChange={(e) => setField('domain', e.target.value)}
-              placeholder="e.g. UPSC — Indian Polity & Constitutional Law"
-              className="w-full rounded-lg border border-[#262626] bg-[#141414] px-3 py-2.5 text-sm text-white placeholder:text-[#71717a] focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
-            <div className="mt-3 flex flex-wrap gap-2">
-              {DOMAIN_CHIPS.map((chip) => (
+        {/* ── STEP 1: Type Selection ─────────────────────────────────── */}
+        {step === 'type' && (
+          <div>
+            <div className="mb-8">
+              <h1 className="text-2xl font-semibold tracking-tight text-white">What best describes you?</h1>
+              <p className="mt-1 text-sm text-[#a1a1aa]">This shapes your character's voice and content style.</p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {(
+                [
+                  { type: 'educator' as const, icon: '🎓', title: 'Educator / Coach', desc: 'Teachers, UPSC educators, skill coaches, domain experts who share knowledge' },
+                  { type: 'creator' as const, icon: '✨', title: 'Creator / Brand', desc: 'Personal brand builders, influencers, lifestyle creators, opinion leaders' },
+                  { type: 'reseller' as const, icon: '🛍️', title: 'Reseller / Store', desc: 'WhatsApp sellers, boutiques, e-commerce stores needing a brand model' },
+                ] as const
+              ).map(({ type, icon, title, desc }) => (
                 <button
-                  key={chip}
+                  key={type}
                   type="button"
-                  onClick={() => setField('domain', chip === 'Other' ? '' : chip)}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                    form.domain === chip
-                      ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
-                      : 'border-[#262626] bg-[#141414] text-[#a1a1aa] hover:border-[#404040] hover:text-white'
-                  }`}
+                  onClick={() => handleTypeSelect(type)}
+                  className="flex flex-col items-start gap-3 rounded-xl border border-[#262626] bg-[#141414] p-6 text-left transition-colors hover:border-[#404040] hover:bg-[#1a1a1a]"
                 >
-                  {chip}
+                  <span className="text-4xl">{icon}</span>
+                  <div>
+                    <p className="text-sm font-semibold text-white">{title}</p>
+                    <p className="mt-1 text-xs text-[#71717a]">{desc}</p>
+                  </div>
                 </button>
               ))}
             </div>
-          </section>
+          </div>
+        )}
 
-          <section>
-            <p className="mb-3 text-sm font-medium text-white">Gender</p>
-            <div className="grid grid-cols-3 gap-3">
-              {['Male', 'Female', 'Neutral'].map((g) => (
-                <SelectionCard
-                  key={g}
-                  label={g}
-                  selected={form.gender === g.toLowerCase()}
-                  onClick={() => setField('gender', g.toLowerCase())}
-                />
-              ))}
-            </div>
-          </section>
+        {/* ── STEP 2: Form ───────────────────────────────────────────── */}
+        {step === 'form' && characterType && (
+          <div className="space-y-8">
+            <h1 className="text-2xl font-semibold tracking-tight text-white">
+              {characterType === 'educator' && 'Create your Educator character'}
+              {characterType === 'creator' && 'Create your Creator character'}
+              {characterType === 'reseller' && 'Create your Store Model'}
+            </h1>
 
-          <section>
-            <p className="mb-3 text-sm font-medium text-white">Age Range</p>
-            <div className="grid grid-cols-3 gap-3">
-              {['20s', '30s', '40s+'].map((a) => (
-                <SelectionCard
-                  key={a}
-                  label={a}
-                  selected={form.age_range === a}
-                  onClick={() => setField('age_range', a)}
-                />
-              ))}
-            </div>
-          </section>
-
-          <section>
-            <p className="mb-3 text-sm font-medium text-white">Nationality</p>
-            <div className="grid grid-cols-2 gap-3">
-              <SelectionCard
-                label="Indian"
-                selected={form.nationality === 'Indian'}
-                onClick={() => setField('nationality', 'Indian')}
-              />
-              <SelectionCard
-                label="Other"
-                selected={form.nationality === 'Other'}
-                onClick={() => setField('nationality', 'Other')}
-              />
-            </div>
-            {form.nationality === 'Other' && (
+            {/* Character name */}
+            <section>
+              <label className="mb-2 block text-sm font-medium text-white">Character Name</label>
               <input
                 type="text"
-                value={form.nationality_custom}
-                onChange={(e) => setField('nationality_custom', e.target.value)}
-                placeholder="Enter nationality"
-                className="mt-3 w-full rounded-lg border border-[#262626] bg-[#141414] px-3 py-2.5 text-sm text-white placeholder:text-[#71717a] focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                value={form.name}
+                onChange={(e) => setField('name', e.target.value)}
+                placeholder={characterType === 'reseller' ? "e.g. Priya (your brand model's name)" : 'e.g. Arjun'}
+                className="w-full rounded-lg border border-[#262626] bg-[#141414] px-3 py-2.5 text-sm text-white placeholder:text-[#71717a] focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
-            )}
-          </section>
+            </section>
 
-          <section>
-            <p className="mb-3 text-sm font-medium text-white">Communication Style</p>
-            <div className="space-y-3">
-              {STYLE_PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => setField('style_preset', preset.id)}
-                  className={`w-full rounded-lg border p-4 text-left transition-colors ${
-                    form.style_preset === preset.id
-                      ? 'border-indigo-500 bg-indigo-500/10'
-                      : 'border-[#262626] bg-[#141414] hover:border-[#404040]'
-                  }`}
-                >
-                  <p className={`text-sm font-medium ${form.style_preset === preset.id ? 'text-white' : 'text-[#a1a1aa]'}`}>
-                    {preset.name}
-                  </p>
-                  <p className="mt-0.5 text-xs text-[#71717a]">{preset.description}</p>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section>
-            <div className="space-y-3">
-              <div>
-                <h3 className="text-sm font-medium text-white">
-                  Reference Photo
-                  <span className="text-zinc-500 font-normal ml-2">(Optional — add later in Settings)</span>
-                </h3>
-                <p className="text-xs text-zinc-500 mt-1">Front portrait, clean background works best.</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {/* Upload card */}
-                <button
-                  type="button"
-                  onClick={() => { setGenerateReference(false); fileInputRef.current?.click() }}
-                  className={`relative flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
-                    referenceFile && !generateReference
-                      ? 'border-indigo-500 bg-indigo-500/10'
-                      : 'border-[#262626] bg-[#141414] hover:border-[#404040]'
-                  }`}
-                >
-                  {previewUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={previewUrl} alt="Preview" className="h-20 w-20 rounded-lg object-cover" />
-                  ) : (
-                    <>
-                      <Upload size={20} className="text-zinc-400" />
-                      <div>
-                        <p className="text-sm text-zinc-400">Upload Photo</p>
-                        <p className="text-xs text-zinc-600 mt-0.5">JPEG or PNG, max 10MB</p>
-                      </div>
-                    </>
-                  )}
-                </button>
-                {/* Generate card */}
-                {generatedPreviewUrl ? (
-                  <div className="relative rounded-lg overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={generatedPreviewUrl} alt="Generated preview" className="w-full aspect-square object-cover rounded-lg" />
+            {/* Educator: Domain */}
+            {characterType === 'educator' && (
+              <section>
+                <label className="mb-2 block text-sm font-medium text-white">Domain / Expertise</label>
+                <input
+                  type="text"
+                  value={form.domain}
+                  onChange={(e) => setField('domain', e.target.value)}
+                  placeholder="e.g. UPSC Civil Services"
+                  className="w-full rounded-lg border border-[#262626] bg-[#141414] px-3 py-2.5 text-sm text-white placeholder:text-[#71717a] focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {EDUCATOR_CHIPS.map((chip) => (
                     <button
+                      key={chip}
                       type="button"
-                      onClick={() => generateImage(createdCharacterId!, createdToken!)}
-                      className="absolute bottom-2 right-2 h-7 w-7 rounded-full bg-black/70 border border-white/30 text-white flex items-center justify-center hover:bg-black"
+                      onClick={() => setField('domain', chip === 'Other' ? '' : chip)}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                        form.domain === chip
+                          ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
+                          : 'border-[#262626] bg-[#141414] text-[#a1a1aa] hover:border-[#404040] hover:text-white'
+                      }`}
                     >
-                      <RefreshCw className="h-3 w-3" />
+                      {chip}
                     </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Creator: Niche */}
+            {characterType === 'creator' && (
+              <section>
+                <label className="mb-2 block text-sm font-medium text-white">Your niche</label>
+                <input
+                  type="text"
+                  value={form.domain}
+                  onChange={(e) => setField('domain', e.target.value)}
+                  placeholder="e.g. Startup founder / Tech"
+                  className="w-full rounded-lg border border-[#262626] bg-[#141414] px-3 py-2.5 text-sm text-white placeholder:text-[#71717a] focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {CREATOR_CHIPS.map((chip) => (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() => setField('domain', chip === 'Other' ? '' : chip)}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                        form.domain === chip
+                          ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
+                          : 'border-[#262626] bg-[#141414] text-[#a1a1aa] hover:border-[#404040] hover:text-white'
+                      }`}
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Reseller: Store name + Product category */}
+            {characterType === 'reseller' && (
+              <>
+                <section>
+                  <label className="mb-2 block text-sm font-medium text-white">
+                    Store / Brand name
+                    <span className="ml-1 text-xs font-normal text-[#71717a]">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form.store_name}
+                    onChange={(e) => setField('store_name', e.target.value)}
+                    placeholder="e.g. Priya's Boutique"
+                    className="w-full rounded-lg border border-[#262626] bg-[#141414] px-3 py-2.5 text-sm text-white placeholder:text-[#71717a] focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <p className="mt-1 text-xs text-[#71717a]">Used in captions when generating content</p>
+                </section>
+
+                <section>
+                  <p className="mb-3 text-sm font-medium text-white">What do you sell?</p>
+                  <div className="flex flex-wrap gap-2">
+                    {RESELLER_CATEGORIES.map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setField('product_category', cat)}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                          form.product_category === cat
+                            ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
+                            : 'border-[#262626] bg-[#141414] text-[#a1a1aa] hover:border-[#404040] hover:text-white'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
                   </div>
-                ) : generating ? (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-indigo-500 bg-indigo-950/30 p-6 text-center">
-                    <div className="h-5 w-5 rounded-full border-2 border-indigo-400/30 border-t-indigo-400 animate-spin" />
-                    <p className="text-xs text-zinc-500">Generating…</p>
-                  </div>
-                ) : (
+                </section>
+              </>
+            )}
+
+            {/* Gender */}
+            <section>
+              <p className="mb-3 text-sm font-medium text-white">Gender</p>
+              <div className="grid grid-cols-3 gap-3">
+                {['Male', 'Female', 'Neutral'].map((g) => (
                   <button
+                    key={g}
                     type="button"
-                    onClick={() => {
-                      if (!form.name.trim() || !form.domain.trim()) {
-                        setValidationError('Please fill in Character Name and Domain first.')
-                        return
-                      }
-                      setValidationError(null)
-                      setGenerateReference(true)
-                      if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null) }
-                      setReferenceFile(null)
-                    }}
-                    className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
-                      generateReference
-                        ? 'border-indigo-500 bg-indigo-950/30'
+                    onClick={() => setField('gender', g.toLowerCase())}
+                    className={`rounded-lg border px-4 py-3 text-left text-sm font-medium transition-colors ${
+                      form.gender === g.toLowerCase()
+                        ? 'border-indigo-500 bg-indigo-500/10 text-white'
+                        : 'border-[#262626] bg-[#141414] text-[#a1a1aa] hover:border-[#404040] hover:text-white'
+                    }`}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* Age Range */}
+            <section>
+              <p className="mb-3 text-sm font-medium text-white">Age Range</p>
+              <div className="grid grid-cols-3 gap-3">
+                {['20s', '30s', '40s+'].map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    onClick={() => setField('age_range', a)}
+                    className={`rounded-lg border px-4 py-3 text-left text-sm font-medium transition-colors ${
+                      form.age_range === a
+                        ? 'border-indigo-500 bg-indigo-500/10 text-white'
+                        : 'border-[#262626] bg-[#141414] text-[#a1a1aa] hover:border-[#404040] hover:text-white'
+                    }`}
+                  >
+                    {a}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* Nationality */}
+            <section>
+              <p className="mb-3 text-sm font-medium text-white">Nationality</p>
+              <div className="grid grid-cols-2 gap-3">
+                {['Indian', 'Other'].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setField('nationality', n)}
+                    className={`rounded-lg border px-4 py-3 text-left text-sm font-medium transition-colors ${
+                      form.nationality === n
+                        ? 'border-indigo-500 bg-indigo-500/10 text-white'
+                        : 'border-[#262626] bg-[#141414] text-[#a1a1aa] hover:border-[#404040] hover:text-white'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              {form.nationality === 'Other' && (
+                <input
+                  type="text"
+                  value={form.nationality_custom}
+                  onChange={(e) => setField('nationality_custom', e.target.value)}
+                  placeholder="Enter nationality"
+                  className="mt-3 w-full rounded-lg border border-[#262626] bg-[#141414] px-3 py-2.5 text-sm text-white placeholder:text-[#71717a] focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              )}
+            </section>
+
+            {/* Communication Style */}
+            <section>
+              <p className="mb-3 text-sm font-medium text-white">Communication Style</p>
+              <div className="space-y-3">
+                {presets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setField('style_preset', preset.id)}
+                    className={`w-full rounded-lg border p-4 text-left transition-colors ${
+                      form.style_preset === preset.id
+                        ? 'border-indigo-500 bg-indigo-500/10'
                         : 'border-[#262626] bg-[#141414] hover:border-[#404040]'
                     }`}
                   >
-                    <Sparkles size={20} className={generateReference ? 'text-indigo-400' : 'text-zinc-500'} />
-                    <div>
-                      <p className="text-sm text-zinc-400">Generate from DNA</p>
-                      <p className="text-xs text-zinc-600 mt-0.5">AI creates a face from your character description</p>
-                    </div>
+                    <p className={`text-sm font-medium ${form.style_preset === preset.id ? 'text-white' : 'text-[#a1a1aa]'}`}>
+                      {preset.name}
+                    </p>
+                    <p className="mt-0.5 text-xs text-[#71717a]">{preset.desc}</p>
                   </button>
+                ))}
+              </div>
+            </section>
+
+            {validationError && (
+              <p className="rounded-lg border border-red-900/50 bg-red-950/30 px-3 py-2 text-sm text-red-400">
+                {validationError}
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={handleFormNext}
+              className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
+            >
+              Next →
+            </button>
+          </div>
+        )}
+
+        {/* ── STEP 3: Preview ────────────────────────────────────────── */}
+        {step === 'preview' && (
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-white">Your reference photo</h1>
+              <p className="mt-1 text-sm text-[#a1a1aa]">
+                Used for consistent image generation. Change anytime in Settings.
+              </p>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex gap-1 rounded-lg border border-[#262626] bg-[#141414] p-1">
+              <button
+                type="button"
+                onClick={() => switchTab('generated')}
+                className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  previewMode === 'generated' ? 'bg-[#262626] text-white' : 'text-[#a1a1aa] hover:text-white'
+                }`}
+              >
+                ✨ Generate from DNA
+              </button>
+              <button
+                type="button"
+                onClick={() => switchTab('uploaded')}
+                className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  previewMode === 'uploaded' ? 'bg-[#262626] text-white' : 'text-[#a1a1aa] hover:text-white'
+                }`}
+              >
+                📷 Upload a photo
+              </button>
+            </div>
+
+            {/* Generate tab */}
+            {previewMode === 'generated' && (
+              <div>
+                {previewLoading ? (
+                  <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-[#262626] bg-[#141414] py-16">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-400/30 border-t-indigo-400" />
+                    <p className="text-sm text-[#a1a1aa]">Generating your character…</p>
+                  </div>
+                ) : previewImageUrl ? (
+                  <div className="space-y-4">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={previewImageUrl}
+                      alt="Generated portrait"
+                      className="aspect-square w-full rounded-lg object-cover"
+                    />
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-white">Edit this image</label>
+                      <textarea
+                        value={editPrompt}
+                        onChange={(e) => setEditPrompt(e.target.value)}
+                        rows={3}
+                        placeholder={
+                          'e.g. Change outfit to a traditional kurta,\nmake the background darker,\nadjust lighting to be warmer,\nmake the smile more confident'
+                        }
+                        className="w-full resize-none rounded-lg border border-[#262626] bg-[#141414] px-3 py-2.5 text-sm text-white placeholder:text-[#71717a] focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleEditPortrait}
+                        disabled={!editPrompt.trim()}
+                        className="rounded-lg bg-[#262626] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#333333] disabled:opacity-40"
+                      >
+                        Apply Edit →
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-[#262626] bg-[#141414] py-16">
+                    <button
+                      type="button"
+                      onClick={handleGeneratePortrait}
+                      className="rounded-lg bg-indigo-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
+                    >
+                      ✨ Generate my character →
+                    </button>
+                  </div>
                 )}
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png"
-                className="hidden"
-                onChange={e => {
-                  const file = e.target.files?.[0]
-                  if (!file) return
-                  if (previewUrl) URL.revokeObjectURL(previewUrl)
-                  setReferenceFile(file)
-                  setPreviewUrl(URL.createObjectURL(file))
-                  setGenerateReference(false)
-                  e.target.value = ''
-                }}
-              />
-              {validationError && (
-                <p className="text-xs text-red-400 mt-2">{validationError}</p>
-              )}
-              {generatedPreviewUrl && (
+            )}
+
+            {/* Upload tab */}
+            {previewMode === 'uploaded' && (
+              <div className="space-y-3">
                 <button
                   type="button"
-                  onClick={() => router.push(`/dashboard/chat?id=${createdCharacterId}`)}
-                  className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-500 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full rounded-xl border-2 border-dashed border-[#262626] bg-[#141414] p-10 transition-colors hover:border-[#404040]"
                 >
-                  Continue to Chat →
+                  {uploadedPreviewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={uploadedPreviewUrl}
+                      alt="Uploaded preview"
+                      className="mx-auto aspect-square max-w-xs rounded-lg object-cover"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-3">
+                      <Upload size={24} className="text-[#71717a]" />
+                      <div className="text-center">
+                        <p className="text-sm text-[#a1a1aa]">Upload Photo</p>
+                        <p className="mt-0.5 text-xs text-[#71717a]">JPEG or PNG, max 10MB</p>
+                      </div>
+                    </div>
+                  )}
                 </button>
-              )}
-            </div>
-          </section>
+                <p className="text-xs text-[#71717a]">
+                  Photo editing available after character creation in Settings
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    if (uploadedPreviewUrl) URL.revokeObjectURL(uploadedPreviewUrl)
+                    setUploadedFile(file)
+                    setUploadedPreviewUrl(URL.createObjectURL(file))
+                    e.target.value = ''
+                  }}
+                />
+              </div>
+            )}
 
-          {error && (
-            <p className="rounded-lg border border-red-900/50 bg-red-950/30 px-3 py-2 text-sm text-red-400">
-              {error}
-            </p>
-          )}
+            {error && (
+              <p className="rounded-lg border border-red-900/50 bg-red-950/30 px-3 py-2 text-sm text-red-400">
+                {error}
+              </p>
+            )}
 
-          <Button
-            type="submit"
-            disabled={submitting || generating || !!generatedPreviewUrl}
-            className="w-full bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50"
-            size="lg"
-          >
-            {submitting ? 'Creating Character…' : 'Create Character'}
-          </Button>
-        </form>
+            {/* Primary CTA — only when image is ready */}
+            {(previewImageUrl || uploadedFile) && (
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => handleCreateCharacter(false)}
+                  disabled={submitting}
+                  className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
+                >
+                  {submitting ? 'Creating…' : '✓ Use this — Create Character'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCreateCharacter(true)}
+                  disabled={submitting}
+                  className="w-full text-sm text-[#71717a] transition-colors hover:text-white"
+                >
+                  Skip for now — add photo later in Settings →
+                </button>
+              </div>
+            )}
+
+            {/* Skip link when no image yet */}
+            {!previewImageUrl && !uploadedFile && (
+              <button
+                type="button"
+                onClick={() => handleCreateCharacter(true)}
+                disabled={submitting}
+                className="w-full text-sm text-[#71717a] transition-colors hover:text-white"
+              >
+                {submitting ? 'Creating…' : 'Skip for now — add photo later in Settings →'}
+              </button>
+            )}
+          </div>
+        )}
+
       </main>
     </div>
   )

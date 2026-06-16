@@ -25,6 +25,7 @@ type Character = {
   created_at: string
   updated_at?: string
   generation_count?: number
+  character_type?: string | null
 }
 
 const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL ?? 'http://localhost:8787'
@@ -104,7 +105,12 @@ function CharacterCard({ character }: { character: Character }) {
 
         {/* Name + domain overlay */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-4 pb-3 pt-8">
-          <p className="text-lg font-bold text-white leading-tight">{character.name}</p>
+          <p className="text-lg font-bold text-white leading-tight">
+            {character.name}
+            {character.character_type === 'educator' && <span className="ml-1.5 text-base">🎓</span>}
+            {character.character_type === 'creator'  && <span className="ml-1.5 text-base">✨</span>}
+            {character.character_type === 'reseller' && <span className="ml-1.5 text-base">🛍️</span>}
+          </p>
           <p className="text-xs text-zinc-400">{character.domain}</p>
         </div>
       </div>
