@@ -20,7 +20,7 @@ function db(env: Env) {
 }
 
 async function checkGenerationLimit(
-  supabase: ReturnType<typeof createClient>,
+  supabase: ReturnType<typeof db>,
   userId: string,
   type: 'text' | 'image'
 ): Promise<{ allowed: boolean; used: number; limit: number }> {
@@ -43,7 +43,7 @@ async function checkGenerationLimit(
     .eq('user_id', userId)
     .gte('granted_at', todayStart.toISOString())
 
-  const extraGranted = (overrides ?? []).reduce((sum, row) => {
+  const extraGranted = (overrides ?? []).reduce((sum, row: { extra_text?: number | null; extra_image?: number | null }) => {
     return sum + (type === 'text' ? (row.extra_text ?? 0) : (row.extra_image ?? 0))
   }, 0)
 
@@ -140,7 +140,15 @@ generate.post('/image', async (c) => {
     // 6. Pre-generate row ID and save to R2 via base64 or CDN fallback
     const generationId = crypto.randomUUID()
     const r2Path = `generations/${userId}/${character_id}/${generationId}.png`
-    let finalImageUrl = result.outputUrl
+    const safeImageUrl = (
+      result.outputUrl &&
+      result.outputUrl !== 'null' &&
+      result.outputUrl !== 'undefined'
+    ) ? result.outputUrl : null
+    if (!safeImageUrl) {
+      console.warn('[generate/image] outputUrl was null/invalid:', result.outputUrl)
+    }
+    let finalImageUrl: string | null = safeImageUrl
     if (result.imageBase64) {
       try {
         const buffer = Uint8Array.from(atob(result.imageBase64), c => c.charCodeAt(0)).buffer

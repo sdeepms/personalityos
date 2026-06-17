@@ -4,7 +4,7 @@ import { getModelById, getDefaultModel } from '../models'
 const MUAPI_HOST = 'https://api.muapi.ai'
 const MUAPI_POLL_BASE = `${MUAPI_HOST}/api/v1/predictions`
 const POLL_INTERVAL_MS = 4000
-const MAX_ATTEMPTS = 15 // 60 seconds — flux-2-klein-4b-turbo-edit completes in ~15s
+const MAX_ATTEMPTS = 25 // 100 seconds — flux-2-klein-4b-turbo-edit completes in ~15s
 
 type AspectDimensions = { width: number; height: number }
 
@@ -115,7 +115,7 @@ export class MuAPIAdapter implements GenerationProvider {
       ? { prompt, images_list: [referenceImageUrl], aspect_ratio: aspectRatioStr }
       : { prompt, width, height, num_images: 1 }
 
-    console.log('[muapi] submitting to:', submitEndpoint)
+    console.log('[muapi] using endpoint:', submitEndpoint)
     const generateRes = await fetch(submitEndpoint, {
       method: 'POST',
       headers: {
@@ -147,9 +147,15 @@ export class MuAPIAdapter implements GenerationProvider {
     while (attempts < MAX_ATTEMPTS) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
 
-      const statusRes = await fetch(`${MUAPI_POLL_BASE}/${request_id}/result`, {
-        headers: { 'x-api-key': this.apiKey },
-      })
+      let statusRes: Response
+      try {
+        statusRes = await fetch(`${MUAPI_POLL_BASE}/${request_id}/result`, {
+          headers: { 'x-api-key': this.apiKey },
+        })
+      } catch (pollErr) {
+        console.warn('[muapi] poll attempt failed, retrying:', attempts)
+        continue
+      }
 
       if (!statusRes.ok) {
         attempts++
@@ -174,7 +180,7 @@ export class MuAPIAdapter implements GenerationProvider {
       attempts++
     }
 
-    if (!imageUrl) throw new Error('MuAPI generation timed out after 60 seconds')
+    if (!imageUrl) throw new Error('MuAPI generation timed out after 100 seconds')
 
     return {
       outputUrl: imageUrl,

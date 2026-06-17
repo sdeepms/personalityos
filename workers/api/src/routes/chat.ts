@@ -35,7 +35,7 @@ function db(env: Env) {
 }
 
 async function checkGenerationLimit(
-  supabase: ReturnType<typeof createClient>,
+  supabase: ReturnType<typeof db>,
   userId: string,
   type: 'text' | 'image'
 ): Promise<{ allowed: boolean; used: number; limit: number }> {
@@ -58,7 +58,7 @@ async function checkGenerationLimit(
     .eq('user_id', userId)
     .gte('granted_at', todayStart.toISOString())
 
-  const extraGranted = (overrides ?? []).reduce((sum, row) => {
+  const extraGranted = (overrides ?? []).reduce((sum, row: { extra_text?: number | null; extra_image?: number | null }) => {
     return sum + (type === 'text' ? (row.extra_text ?? 0) : (row.extra_image ?? 0))
   }, 0)
 
