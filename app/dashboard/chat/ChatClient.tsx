@@ -18,6 +18,7 @@ type Character = {
   dna_ready: number
   reference_images_ready: number
   reference_image_urls: string
+  character_type?: string | null
 }
 
 type ReferenceImage = {
@@ -159,7 +160,27 @@ function resolveImageUrl(url: string | null): string | null {
   return url
 }
 
-function getIntentShortcuts(domain: string): string[] {
+function getIntentShortcuts(domain: string, characterType?: string | null): string[] {
+  if (characterType === 'reseller') {
+    return [
+      'Today\'s offer',
+      'New arrival',
+      'Flash sale',
+      'Product spotlight',
+      'Customer win',
+    ]
+  }
+
+  if (characterType === 'creator') {
+    return [
+      'Share an opinion',
+      'Tell a story',
+      'Trending topic',
+      'Behind the scenes',
+      'Lesson learned',
+    ]
+  }
+
   const d = domain.toLowerCase()
   if (d.includes('upsc') || d.includes('polity') || d.includes('governance'))
     return ['Explain a concept', 'Debunk a myth', 'Current affairs angle', 'Case study', 'Exam tip']
@@ -1195,7 +1216,7 @@ export default function ChatClient() {
 
   const noRefImage = character.reference_images_ready !== 1
   const hasContent = historyLoading || historyGens.length > 0 || generations.length > 0
-  const intentShortcuts = getIntentShortcuts(character.domain)
+  const intentShortcuts = getIntentShortcuts(character.domain ?? '', character.character_type)
 
   // Build history render list with date dividers
   type RenderItem =
@@ -1489,20 +1510,42 @@ export default function ChatClient() {
       <div>
         <div className="mx-auto w-full max-w-5xl px-4 py-2 sm:px-6">
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none flex-nowrap">
-            {PLATFORMS.map(p => (
-              <button
-                key={p.id}
-                onClick={() => selectPlatform(p.id)}
-                disabled={sending}
-                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${sending ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''} ${
-                  activePlatform === p.id
-                    ? `${PLATFORM_SHORTCUT[p.id]} bg-zinc-800`
-                    : PLATFORM_SHORTCUT[p.id]
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
+            {character.character_type === 'reseller' ? (
+              [
+                { id: 'instagram', label: 'Instagram'       },
+                { id: 'story',     label: 'WhatsApp Status' },
+                { id: 'carousel',  label: 'Facebook'        },
+                { id: 'story',     label: 'Story'           },
+              ].map(p => (
+                <button
+                  key={p.label}
+                  onClick={() => selectPlatform(p.id)}
+                  disabled={sending}
+                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${sending ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''} ${
+                    activePlatform === p.id
+                      ? `${PLATFORM_SHORTCUT[p.id]} bg-zinc-800`
+                      : PLATFORM_SHORTCUT[p.id]
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))
+            ) : (
+              PLATFORMS.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => selectPlatform(p.id)}
+                  disabled={sending}
+                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${sending ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''} ${
+                    activePlatform === p.id
+                      ? `${PLATFORM_SHORTCUT[p.id]} bg-zinc-800`
+                      : PLATFORM_SHORTCUT[p.id]
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))
+            )}
           </div>
         </div>
       </div>
