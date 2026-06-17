@@ -1583,7 +1583,11 @@ export default function ChatClient() {
                     key={offer.id}
                     type="button"
                     disabled={sending}
-                    onClick={() => setInput(offer.description)}
+                    onClick={() => {
+                      const newInput = buildInput(offer.description, platformPrefix)
+                      setInput(newInput)
+                      setIntentPrefix(offer.description)
+                    }}
                     className="flex-shrink-0 rounded-full border border-[#404040] bg-[#1a1a1a] px-3 py-1.5 text-xs text-[#a1a1aa] hover:border-indigo-500 hover:text-white transition-colors disabled:opacity-50"
                   >
                     {offer.label}
