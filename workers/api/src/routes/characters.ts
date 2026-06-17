@@ -373,6 +373,122 @@ characters.delete('/:id/offers/:oid', async (c) => {
   return c.json({ data: { deleted: true } })
 })
 
+// GET /api/characters/:id/products
+characters.get('/:id/products', async (c) => {
+  const userId = c.get('userId')
+  const { id } = c.req.param()
+
+  const { data: character } = await db(c.env)
+    .from('characters')
+    .select('id')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .single()
+  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
+
+  const { data, error } = await db(c.env)
+    .from('character_products')
+    .select('*')
+    .eq('character_id', id)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+
+  if (error) return c.json({ error: 'Failed to fetch products', code: 'INTERNAL_ERROR' }, 500)
+  return c.json({ data: data ?? [] })
+})
+
+// POST /api/characters/:id/products
+characters.post('/:id/products', async (c) => {
+  const userId = c.get('userId')
+  const { id } = c.req.param()
+
+  const { data: character } = await db(c.env)
+    .from('characters')
+    .select('id')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .single()
+  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
+
+  let body: Record<string, string | File | (string | File)[]>
+  try {
+    body = await c.req.parseBody({ all: true })
+  } catch {
+    return c.json({ error: 'Invalid multipart form data', code: 'BAD_REQUEST' }, 400)
+  }
+
+  const imageFile = body['file']
+  if (!(imageFile instanceof File)) return c.json({ error: 'file is required', code: 'BAD_REQUEST' }, 400)
+
+  const nameRaw = body['name']
+  const name = typeof nameRaw === 'string' ? nameRaw.trim() : ''
+  if (!name)              return c.json({ error: 'name is required',                        code: 'BAD_REQUEST' }, 400)
+  if (name.length > 50)   return c.json({ error: 'name must be 50 characters or fewer',     code: 'BAD_REQUEST' }, 400)
+
+  if (!VALID_MIME_TYPES.includes(imageFile.type)) {
+    return c.json({ error: `Invalid file type: ${imageFile.type}. Only JPEG and PNG allowed.`, code: 'INVALID_FILE_TYPE' }, 400)
+  }
+  if (imageFile.size > MAX_FILE_SIZE) {
+    return c.json({ error: 'File too large. Maximum 10 MB.', code: 'FILE_TOO_LARGE' }, 413)
+  }
+
+  const productId  = crypto.randomUUID()
+  const contentType = imageFile.type
+  const r2Path     = `products/${userId}/${id}/${productId}.jpg`
+  const buffer     = await imageFile.arrayBuffer()
+  await c.env.STORAGE.put(r2Path, buffer, { httpMetadata: { contentType } })
+
+  const { data, error } = await db(c.env)
+    .from('character_products')
+    .insert({
+      id:           productId,
+      character_id: id,
+      user_id:      userId,
+      name,
+      image_url:    r2Path,
+    })
+    .select()
+    .single()
+
+  if (error) return c.json({ error: 'Failed to create product', code: 'INTERNAL_ERROR' }, 500)
+  return c.json({ data: { id: productId, name, image_url: r2Path, public_url: '/files/' + r2Path } }, 201)
+})
+
+// DELETE /api/characters/:id/products/:pid
+characters.delete('/:id/products/:pid', async (c) => {
+  const userId = c.get('userId')
+  const { id, pid } = c.req.param()
+
+  const { data: character } = await db(c.env)
+    .from('characters')
+    .select('id')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .single()
+  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
+
+  const { data: product } = await db(c.env)
+    .from('character_products')
+    .select('id, image_url')
+    .eq('id', pid)
+    .eq('character_id', id)
+    .eq('user_id', userId)
+    .single()
+  if (!product) return c.json({ error: 'Product not found', code: 'NOT_FOUND' }, 404)
+
+  await c.env.STORAGE.delete(product.image_url as string)
+
+  const { error } = await db(c.env)
+    .from('character_products')
+    .delete()
+    .eq('id', pid)
+    .eq('character_id', id)
+    .eq('user_id', userId)
+
+  if (error) return c.json({ error: 'Failed to delete product', code: 'INTERNAL_ERROR' }, 500)
+  return c.json({ data: { deleted: true } })
+})
+
 // DELETE /api/characters/:id
 characters.delete('/:id', async (c) => {
   const userId = c.get('userId')

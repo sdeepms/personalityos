@@ -12,6 +12,12 @@ type Character = {
   system_prompt: string | null
 }
 
+type Attachment = {
+  type: 'product_image' | 'reference_image'
+  public_url: string
+  label: string
+}
+
 const VALID_PLATFORMS = ['instagram', 'linkedin', 'x', 'carousel', 'story', 'general'] as const
 type Platform = typeof VALID_PLATFORMS[number]
 
@@ -93,14 +99,14 @@ chat.post('/', async (c) => {
   const userId = c.get('userId')
 
   // 1. Parse body
-  let body: { character_id?: string; message?: string; platform?: string; correlation_id?: string }
+  let body: { character_id?: string; message?: string; platform?: string; correlation_id?: string; attachments?: Attachment[] }
   try {
     body = await c.req.json()
   } catch {
     return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
   }
 
-  const { character_id, message, platform, correlation_id } = body
+  const { character_id, message, platform, correlation_id, attachments } = body
 
   // 2. Validate required fields
   if (!character_id || !message || !platform) {
@@ -145,7 +151,7 @@ chat.post('/', async (c) => {
 
   // 4. Build system prompt
   const formatRules = PLATFORM_RULES[typedPlatform]
-  const systemPrompt = `${character.system_prompt ?? ''}
+  let systemPrompt = `${character.system_prompt ?? ''}
 
 PLATFORM: ${typedPlatform}
 FORMAT RULES: ${formatRules}
@@ -174,6 +180,17 @@ Schema:
   "platform": "string",
   "hashtags": ["string"]
 }`
+
+  // Append attachment context to system prompt
+  const productAttachment = attachments?.find(a => a.type === 'product_image')
+  const refAttachment     = attachments?.find(a => a.type === 'reference_image')
+
+  if (productAttachment) {
+    systemPrompt += `\n\nPRODUCT CONTEXT: The user is creating content for a product. Product image is attached.\nProduct: ${productAttachment.label}\nOnly use product details the user provides in their message.\nWrite a caption that describes this product engagingly, includes any price or details the user mentions, and ends with a clear call to action.`
+  }
+  if (refAttachment) {
+    systemPrompt += `\n\nSTYLE REFERENCE: The user has provided a reference image for mood/style inspiration.\nGenerate content that matches the mood and energy of the reference. Do not describe the reference image directly.`
+  }
 
   // 5. Call LLM
   const adapter = getLLMAdapter(c.env)

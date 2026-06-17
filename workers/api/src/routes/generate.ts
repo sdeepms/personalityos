@@ -5,14 +5,22 @@ import type { Env, Variables } from '../index'
 import { getImageProvider } from '../providers/factory'
 import { assembleImagePrompt } from '../services/prompt-builder'
 import type { CharacterForPrompt } from '../services/prompt-builder'
+import type { GenerationResult } from '../providers/interface'
 
 export const generate = new Hono<{ Bindings: Env; Variables: Variables }>()
+
+type Attachment = {
+  type: 'product_image' | 'reference_image'
+  public_url: string
+  label: string
+}
 
 type Character = CharacterForPrompt & {
   id: string
   user_id: string
   name: string
   reference_images_ready: number
+  character_type: string | null
 }
 
 function db(env: Env) {
@@ -70,6 +78,7 @@ generate.post('/image', async (c) => {
       user_prompt?: string
       platform?: string
       correlation_id?: string
+      attachments?: Attachment[]
     }
     try {
       body = await c.req.json()
@@ -77,7 +86,7 @@ generate.post('/image', async (c) => {
       return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
     }
 
-    const { character_id, image_description, user_prompt, platform, correlation_id } = body
+    const { character_id, image_description, user_prompt, platform, correlation_id, attachments } = body
     if (!character_id || !image_description || !platform) {
       return c.json(
         { error: 'character_id, image_description, and platform are required', code: 'BAD_REQUEST' },
@@ -89,7 +98,7 @@ generate.post('/image', async (c) => {
     console.log('[generate/image] fetching character:', character_id)
     const { data: character, error: charError } = await db(c.env)
       .from('characters')
-      .select('id, user_id, name, visual_style_prompt, prompt_dna, reference_image_urls, reference_images_ready')
+      .select('id, user_id, name, visual_style_prompt, prompt_dna, reference_image_urls, reference_images_ready, character_type')
       .eq('id', character_id)
       .eq('user_id', userId)
       .single<Character>()
@@ -120,22 +129,49 @@ generate.post('/image', async (c) => {
       }, 429)
     }
 
-    // 4. Assemble prompt
-    console.log('[generate/image] assembling prompt for platform:', platform)
-    const assembled = assembleImagePrompt(character, image_description, platform)
-    console.log('[generate/image] assembled — ref_url:', assembled.reference_image_url, 'aspect:', assembled.aspect_ratio, 'model:', assembled.model)
+    // 4-5. Determine generation path and run
+    const productAttachment = attachments?.find(a => a.type === 'product_image')
+    let personImageUrl: string | null = null
+    let generationType = 'image'
 
-    // 5. Run generation synchronously
-    console.log('[generate/image] calling generateImage...')
-    const result = await getImageProvider(c.env).generateImage(assembled.prompt, {
-      referenceImageUrl: assembled.reference_image_url ?? undefined,
-      aspectRatio: assembled.aspect_ratio,
-      negativePrompt: assembled.negative_prompt,
-      model: assembled.model,
-      userId,
-      characterId: character_id,
-    })
-    console.log('[generate/image] generation done, outputUrl:', result.outputUrl, 'durationMs:', result.durationMs)
+    if (productAttachment && character.character_type === 'reseller') {
+      try {
+        const refs = JSON.parse(character.reference_image_urls ?? '[]') as Array<{ url: string; is_primary: boolean }>
+        const primary = refs.find(r => r.is_primary) ?? refs[0]
+        if (primary) {
+          personImageUrl = primary.url.startsWith('http')
+            ? primary.url
+            : `${c.env.WORKER_URL}/files/${primary.url}`
+        }
+      } catch { /* no reference image */ }
+    }
+
+    let result: GenerationResult
+    if (productAttachment && character.character_type === 'reseller' && personImageUrl) {
+      console.log('[generate/image] using product photography path')
+      result = await getImageProvider(c.env).generateProductPhotography(
+        personImageUrl,
+        productAttachment.public_url,
+        image_description ?? 'Professional product showcase',
+        '1:1'
+      )
+      generationType = 'product_photography'
+    } else {
+      console.log('[generate/image] assembling prompt for platform:', platform)
+      const assembled = assembleImagePrompt(character, image_description, platform)
+      console.log('[generate/image] assembled — ref_url:', assembled.reference_image_url, 'aspect:', assembled.aspect_ratio, 'model:', assembled.model)
+
+      console.log('[generate/image] calling generateImage...')
+      result = await getImageProvider(c.env).generateImage(assembled.prompt, {
+        referenceImageUrl: assembled.reference_image_url ?? undefined,
+        aspectRatio: assembled.aspect_ratio,
+        negativePrompt: assembled.negative_prompt,
+        model: assembled.model,
+        userId,
+        characterId: character_id,
+      })
+      console.log('[generate/image] generation done, outputUrl:', result.outputUrl, 'durationMs:', result.durationMs)
+    }
 
     // 6. Pre-generate row ID and save to R2 via base64 or CDN fallback
     const generationId = crypto.randomUUID()
@@ -171,7 +207,7 @@ generate.post('/image', async (c) => {
         id: generationId,
         character_id,
         user_id: userId,
-        generation_type: 'image',
+        generation_type: generationType,
         platform,
         user_prompt: user_prompt ?? image_description,
         correlation_id: correlation_id || null,

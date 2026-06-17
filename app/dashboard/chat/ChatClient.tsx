@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { RefreshCw, Share2, Download, Copy, Check, ChevronLeft, ChevronRight, X, ChevronDown, MoreVertical } from 'lucide-react'
+import { RefreshCw, Share2, Download, Copy, Check, ChevronLeft, ChevronRight, X, ChevronDown, MoreVertical, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/browser'
 
@@ -74,6 +74,24 @@ type Offer = {
   id: string
   label: string
   description: string
+}
+
+type AttachmentType = 'product_image' | 'reference_image'
+
+type Attachment = {
+  id: string
+  type: AttachmentType
+  label: string
+  public_url: string
+  preview_url: string
+  source: 'library' | 'fresh_upload'
+}
+
+type SavedProduct = {
+  id: string
+  name: string
+  image_url: string
+  public_url?: string
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -934,12 +952,18 @@ export default function ChatClient() {
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
   const [feedbackSubmitted,  setFeedbackSubmitted]  = useState(false)
 
-  const scrollRef   = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const menuRef     = useRef<HTMLDivElement>(null)
+  const scrollRef              = useRef<HTMLDivElement>(null)
+  const textareaRef            = useRef<HTMLTextAreaElement>(null)
+  const menuRef                = useRef<HTMLDivElement>(null)
+  const attachmentPickerRef    = useRef<HTMLDivElement>(null)
+  const attachmentFileInputRef = useRef<HTMLInputElement>(null)
 
-  const [menuOpen,      setMenuOpen]      = useState(false)
-  const [showProfile,   setShowProfile]   = useState(false)
+  const [menuOpen,              setMenuOpen]              = useState(false)
+  const [showProfile,           setShowProfile]           = useState(false)
+  const [attachments,           setAttachments]           = useState<Attachment[]>([])
+  const [showAttachmentPicker,  setShowAttachmentPicker]  = useState(false)
+  const [savedProducts,         setSavedProducts]         = useState<SavedProduct[]>([])
+  const [pickerLoading,         setPickerLoading]         = useState(false)
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -978,6 +1002,16 @@ export default function ChatClient() {
     if (menuOpen) document.addEventListener('mousedown', handleOutside)
     return () => document.removeEventListener('mousedown', handleOutside)
   }, [menuOpen])
+
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (attachmentPickerRef.current && !attachmentPickerRef.current.contains(e.target as Node)) {
+        setShowAttachmentPicker(false)
+      }
+    }
+    if (showAttachmentPicker) document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [showAttachmentPicker])
 
   useEffect(() => {
     if (!characterId) { router.replace('/dashboard'); return }
@@ -1031,6 +1065,18 @@ export default function ChatClient() {
           } catch {
             // offers stay empty, fall through to intent shortcuts
           }
+
+          try {
+            const productsRes = await fetch(
+              `${WORKER_URL}/api/characters/${characterId}/products`,
+              { headers: { Authorization: `Bearer ${session.access_token}` } }
+            )
+            const productsJson = await productsRes.json() as { data?: Array<{ id: string; name: string; image_url: string }> }
+            setSavedProducts((productsJson.data ?? []).map(p => ({
+              ...p,
+              public_url: `${WORKER_URL}/files/${p.image_url}`,
+            })))
+          } catch { /* products stay empty */ }
         }
 
         if (histRes.ok) {
@@ -1095,6 +1141,7 @@ export default function ChatClient() {
           user_prompt:       message,
           platform,
           correlation_id:    correlationId,
+          attachments: attachments.map(a => ({ type: a.type, public_url: a.public_url, label: a.label })),
         }),
       })
 
@@ -1166,7 +1213,13 @@ export default function ChatClient() {
       const res = await fetch(`${WORKER_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${freshToken}` },
-        body: JSON.stringify({ character_id: character!.id, message, platform, correlation_id: localId }),
+        body: JSON.stringify({
+          character_id: character!.id,
+          message,
+          platform,
+          correlation_id: localId,
+          attachments: attachments.map(a => ({ type: a.type, public_url: a.public_url, label: a.label })),
+        }),
       })
 
       if (res.status === 401) { router.replace('/login'); return }
@@ -1224,6 +1277,70 @@ export default function ChatClient() {
     }])
 
     await executeGeneration(message, platform, correlationId)
+    setAttachments([])
+  }
+
+  async function handleAttachmentFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+
+    setPickerLoading(true)
+    setShowAttachmentPicker(false)
+
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch(`${WORKER_URL}/api/upload/attachment`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: formData,
+      })
+      if (!res.ok) return
+
+      const json = await res.json() as { id: string; r2_path: string; public_url: string }
+      const previewUrl = URL.createObjectURL(file)
+      const attachmentType: AttachmentType = character?.character_type === 'reseller'
+        ? 'product_image'
+        : 'reference_image'
+
+      const attachment: Attachment = {
+        id: json.id,
+        type: attachmentType,
+        label: file.name.replace(/\.[^.]+$/, '').slice(0, 30),
+        public_url: `${WORKER_URL}${json.public_url}`,
+        preview_url: previewUrl,
+        source: 'fresh_upload',
+      }
+
+      setAttachments(prev => {
+        const filtered = prev.filter(a => a.type !== attachmentType)
+        return [...filtered, attachment]
+      })
+    } catch { /* silent */ }
+    finally { setPickerLoading(false) }
+  }
+
+  function handleSelectProduct(product: SavedProduct) {
+    const url = product.public_url ?? `${WORKER_URL}/files/${product.image_url}`
+    const attachment: Attachment = {
+      id: product.id,
+      type: 'product_image',
+      label: product.name,
+      public_url: url,
+      preview_url: url,
+      source: 'library',
+    }
+    setAttachments(prev => {
+      const filtered = prev.filter(a => a.type !== 'product_image')
+      return [...filtered, attachment]
+    })
+    setShowAttachmentPicker(false)
   }
 
   // Resolve avatar URL
@@ -1694,6 +1811,27 @@ export default function ChatClient() {
       {/* ── Input area ── */}
       <div>
         <div className="mx-auto w-full max-w-5xl px-4 py-3 sm:px-6">
+
+          {/* Attachment chips */}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {attachments.map(att => (
+                <div key={att.id} className="flex items-center gap-1.5 rounded-lg border border-[#262626] bg-[#1a1a1a] pl-1 pr-2 py-1">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={att.preview_url} alt={att.label} className="h-6 w-6 rounded object-cover" />
+                  <span className="text-xs text-[#a1a1aa] max-w-[100px] truncate">{att.label}</span>
+                  <button
+                    type="button"
+                    onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))}
+                    className="text-[#71717a] hover:text-white ml-0.5"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex items-end gap-2 sm:gap-3">
             {avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -1703,6 +1841,74 @@ export default function ChatClient() {
                 <span className="text-[10px] font-bold text-white">{getInitials(character.name)}</span>
               </div>
             )}
+
+            {/* Attachment picker */}
+            <div className="relative" ref={attachmentPickerRef}>
+              <button
+                type="button"
+                onClick={() => setShowAttachmentPicker(prev => !prev)}
+                disabled={sending || pickerLoading}
+                className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#262626] bg-[#141414] text-[#71717a] hover:text-white hover:border-[#404040] transition-colors disabled:opacity-50"
+              >
+                <Plus size={14} />
+              </button>
+
+              {showAttachmentPicker && (
+                <div className="absolute bottom-full left-0 mb-2 bg-[#1a1a1a] border border-[#262626] rounded-xl shadow-xl w-64 z-50 p-3">
+                  {character.character_type === 'reseller' ? (
+                    <>
+                      <p className="text-xs text-[#71717a] mb-2">Add product</p>
+                      <button
+                        onClick={() => attachmentFileInputRef.current?.click()}
+                        className="w-full text-left text-sm text-[#a1a1aa] hover:text-white px-2 py-2 rounded-lg hover:bg-[#262626] flex items-center gap-2"
+                      >
+                        📷 Upload product photo
+                      </button>
+                      {savedProducts.length > 0 && (
+                        <>
+                          <hr className="border-[#262626] my-2" />
+                          <p className="text-xs text-[#71717a] mb-2">My products</p>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {savedProducts.map(product => (
+                              <button
+                                key={product.id}
+                                onClick={() => handleSelectProduct(product)}
+                                className="relative aspect-square rounded-lg overflow-hidden border border-[#262626] hover:border-indigo-500 transition-colors"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={product.public_url ?? ''} alt={product.name} className="w-full h-full object-cover" />
+                                <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5">
+                                  <p className="text-[10px] text-white truncate">{product.name}</p>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs text-[#71717a] mb-2">Add reference</p>
+                      <button
+                        onClick={() => attachmentFileInputRef.current?.click()}
+                        className="w-full text-left text-sm text-[#a1a1aa] hover:text-white px-2 py-2 rounded-lg hover:bg-[#262626] flex items-center gap-2"
+                      >
+                        📷 Upload reference image
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Hidden file input */}
+            <input
+              ref={attachmentFileInputRef}
+              type="file"
+              accept="image/jpeg,image/png"
+              className="hidden"
+              onChange={handleAttachmentFileSelect}
+            />
 
             <textarea
               ref={textareaRef}

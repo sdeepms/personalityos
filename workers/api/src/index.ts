@@ -110,6 +110,41 @@ app.post('/api/feedback/request-more', async (c) => {
 // All /api/* routes require a valid Supabase JWT
 app.use('/api/*', authMiddleware)
 
+// POST /api/upload/attachment
+app.post('/api/upload/attachment', async (c) => {
+  const userId = c.get('userId')
+
+  let body: Record<string, string | File | (string | File)[]>
+  try {
+    body = await c.req.parseBody({ all: true })
+  } catch {
+    return c.json({ error: 'Invalid multipart form data', code: 'BAD_REQUEST' }, 400)
+  }
+
+  const imageFile = body['file']
+  if (!(imageFile instanceof File)) return c.json({ error: 'file is required', code: 'BAD_REQUEST' }, 400)
+
+  const validMimeTypes = ['image/jpeg', 'image/png']
+  if (!validMimeTypes.includes(imageFile.type)) {
+    return c.json({ error: `Invalid file type: ${imageFile.type}. Only JPEG and PNG allowed.`, code: 'INVALID_FILE_TYPE' }, 400)
+  }
+  if (imageFile.size > 10 * 1024 * 1024) {
+    return c.json({ error: 'File too large. Maximum 10 MB.', code: 'FILE_TOO_LARGE' }, 413)
+  }
+
+  const id          = crypto.randomUUID()
+  const contentType = imageFile.type || 'image/jpeg'
+  const r2Path      = `attachments/${userId}/${id}.jpg`
+  const buffer      = await imageFile.arrayBuffer()
+  await c.env.STORAGE.put(r2Path, buffer, { httpMetadata: { contentType } })
+
+  return c.json({
+    id,
+    r2_path:    r2Path,
+    public_url: `/files/${r2Path}`,
+  })
+})
+
 app.route('/api/characters', characters)
 app.route('/api/chat', chat)
 app.route('/api/generate', generate)
