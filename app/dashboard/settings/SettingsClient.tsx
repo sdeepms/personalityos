@@ -372,7 +372,7 @@ export default function SettingsClient() {
             ←
           </Link>
           <h1 className="truncate text-base font-semibold text-white">
-            {character.name} — Settings
+            {character.name} — Edit Character
           </h1>
         </div>
       </header>

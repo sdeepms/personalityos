@@ -19,6 +19,11 @@ type Character = {
   reference_images_ready: number
   reference_image_urls: string
   character_type?: string | null
+  gender?: string
+  age_range?: string
+  nationality?: string
+  style_preset?: string
+  created_at?: string
 }
 
 type ReferenceImage = {
@@ -204,6 +209,25 @@ function buildInput(intent: string, platform: string): string {
   if (intent)             return `${intent}: `
   if (platform)           return `${platform} about: `
   return ''
+}
+
+function formatStylePreset(preset?: string): string {
+  if (!preset) return ''
+  return preset.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function capitalize(str?: string): string {
+  if (!str) return ''
+  return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
+function formatDate(dateStr?: string): string {
+  if (!dateStr) return ''
+  return new Date(dateStr).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
 }
 
 /**
@@ -907,7 +931,8 @@ export default function ChatClient() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const menuRef     = useRef<HTMLDivElement>(null)
 
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [menuOpen,      setMenuOpen]      = useState(false)
+  const [showProfile,   setShowProfile]   = useState(false)
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -1231,6 +1256,16 @@ export default function ChatClient() {
   const hasContent = historyLoading || historyGens.length > 0 || generations.length > 0
   const intentShortcuts = getIntentShortcuts(character.domain ?? '', character.character_type)
 
+  // Resolve profile image URL (no avatarError guard — show in panel even if header img failed)
+  let profileImageUrl: string | null = null
+  if (character.reference_images_ready === 1 && character.reference_image_urls) {
+    try {
+      const profileRefs: ReferenceImage[] = JSON.parse(character.reference_image_urls)
+      const profilePrimary = profileRefs.find(r => r.is_primary) ?? profileRefs[0]
+      if (profilePrimary?.url) profileImageUrl = `${WORKER_URL}/files/${profilePrimary.url}`
+    } catch { /* fall through */ }
+  }
+
   // Build history render list with date dividers
   type RenderItem =
     | { kind: 'date'; label: string; key: string }
@@ -1263,29 +1298,35 @@ export default function ChatClient() {
               aria-label="Back"
             >←</button>
 
-            {avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={avatarUrl}
-                alt={character.name}
-                onError={() => setAvatarError(true)}
-                className="h-8 w-8 shrink-0 rounded-full object-cover sm:h-9 sm:w-9"
-              />
-            ) : (
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-700 to-purple-700 sm:h-9 sm:w-9">
-                <span className="text-xs font-bold text-white">{getInitials(character.name)}</span>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => setShowProfile(true)}
+              className="flex items-center gap-2 min-w-0 flex-1 hover:opacity-80 transition-opacity text-left"
+            >
+              {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={avatarUrl}
+                  alt={character.name}
+                  onError={() => setAvatarError(true)}
+                  className="h-8 w-8 shrink-0 rounded-full object-cover sm:h-9 sm:w-9"
+                />
+              ) : (
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-700 to-purple-700 sm:h-9 sm:w-9">
+                  <span className="text-xs font-bold text-white">{getInitials(character.name)}</span>
+                </div>
+              )}
 
-            <div className="min-w-0">
-              <h1 className="truncate text-sm font-semibold text-white sm:text-base">{character.name}</h1>
-              <p className="truncate text-xs text-[#71717a]">
-                {character.domain}
-                {generationCount > 0 && (
-                  <span className="ml-2 text-[#3a3a3a]">· {generationCount} post{generationCount !== 1 ? 's' : ''}</span>
-                )}
-              </p>
-            </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-sm font-semibold text-white sm:text-base">{character.name}</h1>
+                <p className="truncate text-xs text-[#71717a]">
+                  {character.domain}
+                  {generationCount > 0 && (
+                    <span className="ml-2 text-[#3a3a3a]">· {generationCount} post{generationCount !== 1 ? 's' : ''}</span>
+                  )}
+                </p>
+              </div>
+            </button>
           </div>
 
           <div className="relative shrink-0" ref={menuRef}>
@@ -1646,6 +1687,88 @@ export default function ChatClient() {
           initialIndex={lightbox.index}
           onClose={() => setLightbox(null)}
         />
+      )}
+
+      {/* ── Character profile panel ── */}
+      {showProfile && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/60 z-40"
+            onClick={() => setShowProfile(false)}
+          />
+          <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#141414] border-t border-[#262626] rounded-t-2xl max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full bg-[#404040]" />
+            </div>
+            <button
+              onClick={() => setShowProfile(false)}
+              className="absolute top-4 right-4 p-1 text-[#71717a] hover:text-white"
+            >
+              <X size={18} />
+            </button>
+            <div className="px-6 pb-8 pt-2">
+              <div className="flex justify-center mb-4">
+                {profileImageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={profileImageUrl}
+                    alt={character.name}
+                    className="w-28 h-28 rounded-full object-cover border-2 border-[#262626]"
+                  />
+                ) : (
+                  <div className="w-28 h-28 rounded-full bg-indigo-600 flex items-center justify-center border-2 border-[#262626]">
+                    <span className="text-2xl font-bold text-white">{getInitials(character.name)}</span>
+                  </div>
+                )}
+              </div>
+              <div className="text-center mb-1">
+                <h2 className="text-xl font-semibold text-white">
+                  {character.name}
+                  {character.character_type === 'educator' && <span className="ml-2">🎓</span>}
+                  {character.character_type === 'creator'  && <span className="ml-2">✨</span>}
+                  {character.character_type === 'reseller' && <span className="ml-2">🛍️</span>}
+                </h2>
+                <p className="text-sm text-[#a1a1aa] mt-0.5">{character.domain}</p>
+              </div>
+              <hr className="border-[#262626] my-4" />
+              <div className="space-y-3">
+                {[
+                  { label: 'Style',       value: formatStylePreset(character.style_preset) },
+                  { label: 'Gender',      value: capitalize(character.gender)              },
+                  { label: 'Age',         value: character.age_range         ?? ''         },
+                  { label: 'Nationality', value: character.nationality       ?? ''         },
+                ].filter(item => item.value !== '').map(item => (
+                  <div key={item.label} className="flex items-center justify-between">
+                    <span className="text-sm text-[#71717a]">{item.label}</span>
+                    <span className="text-sm text-white">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+              <hr className="border-[#262626] my-4" />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-[#71717a]">Member since</span>
+                  <span className="text-sm text-white">{formatDate(character.created_at)}</span>
+                </div>
+              </div>
+              <hr className="border-[#262626] my-4" />
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setShowProfile(false); router.push('/dashboard/settings?id=' + characterId) }}
+                  className="flex-1 rounded-lg border border-[#262626] bg-[#1a1a1a] px-4 py-2.5 text-sm text-[#a1a1aa] transition-colors hover:border-[#404040] hover:text-white"
+                >
+                  ✏️ Edit Character
+                </button>
+                <button
+                  onClick={() => { setShowProfile(false); router.push('/dashboard/library?id=' + characterId) }}
+                  className="flex-1 rounded-lg border border-[#262626] bg-[#1a1a1a] px-4 py-2.5 text-sm text-[#a1a1aa] transition-colors hover:border-[#404040] hover:text-white"
+                >
+                  📚 Library
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
       {/* ── Image modal (chat card click) ── */}
