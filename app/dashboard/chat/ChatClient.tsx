@@ -70,6 +70,12 @@ type ActiveGeneration = {
   totalTimeS: string | null
 }
 
+type Offer = {
+  id: string
+  label: string
+  description: string
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PLATFORMS = [
@@ -904,6 +910,7 @@ export default function ChatClient() {
   const supabase     = createClient()
 
   const [character,       setCharacter]     = useState<Character | null>(null)
+  const [offers,          setOffers]        = useState<Offer[]>([])
   const [charLoading,     setCharLoading]   = useState(true)
   const [historyGens,     setHistoryGens]   = useState<ActiveGeneration[]>([])
   const [historyLoading,  setHistoryLoading]= useState(true)
@@ -1012,6 +1019,19 @@ export default function ChatClient() {
         if (char.dna_ready === 0) { router.replace('/dashboard'); return }
 
         setCharacter(char)
+
+        if (char.character_type === 'reseller') {
+          try {
+            const offersRes = await fetch(
+              `${WORKER_URL}/api/characters/${characterId}/offers`,
+              { headers: { Authorization: `Bearer ${session.access_token}` } }
+            )
+            const offersJson = await offersRes.json() as { data?: Offer[] }
+            setOffers(offersJson.data ?? [])
+          } catch {
+            // offers stay empty, fall through to intent shortcuts
+          }
+        }
 
         if (histRes.ok) {
           const histJson = await histRes.json() as { data?: HistoryItem[] }
@@ -1552,36 +1572,74 @@ export default function ChatClient() {
         </div>
       )}
 
-      {/* ── Intent shortcuts ── */}
+      {/* ── Intent shortcuts / Offer pills ── */}
       <div>
         <div className="mx-auto w-full max-w-5xl px-4 pt-2 sm:px-6">
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none flex-nowrap">
-            {intentShortcuts.map(intent => (
-              <button key={intent}
-                disabled={sending}
-                onClick={() => {
-                  const newIntent = intentPrefix === intent ? '' : intent
-                  setIntentPrefix(newIntent)
-                  const newInput = buildInput(newIntent, platformPrefix)
-                  setInput(newInput)
-                  setTimeout(() => {
-                    const ta = textareaRef.current
-                    if (ta) {
-                      ta.focus()
-                      const len = ta.value.length
-                      ta.setSelectionRange(len, len)
-                    }
-                  }, 0)
-                }}
-                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${sending ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''} ${
-                  intentPrefix === intent
-                    ? 'bg-zinc-600 text-white border-zinc-500'
-                    : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'
-                }`}>
-                {intent}
-              </button>
-            ))}
-          </div>
+          {character.character_type === 'reseller' ? (
+            offers.length > 0 ? (
+              <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1">
+                {offers.map(offer => (
+                  <button
+                    key={offer.id}
+                    type="button"
+                    disabled={sending}
+                    onClick={() => setInput(offer.description)}
+                    className="flex-shrink-0 rounded-full border border-[#404040] bg-[#1a1a1a] px-3 py-1.5 text-xs text-[#a1a1aa] hover:border-indigo-500 hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    {offer.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => router.push(`/dashboard/templates?id=${characterId}`)}
+                  className="flex-shrink-0 rounded-full border border-dashed border-[#404040] bg-transparent px-3 py-1.5 text-xs text-[#71717a] hover:border-indigo-500 hover:text-white transition-colors"
+                >
+                  + Add template
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => router.push(`/dashboard/templates?id=${characterId}`)}
+                  className="rounded-full border border-dashed border-[#404040] bg-transparent px-3 py-1.5 text-xs text-[#71717a] hover:border-indigo-500 hover:text-white transition-colors"
+                >
+                  + Create offer templates
+                </button>
+                <span className="text-xs text-[#71717a]">
+                  Add quick-tap shortcuts for your products
+                </span>
+              </div>
+            )
+          ) : (
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none flex-nowrap">
+              {intentShortcuts.map(intent => (
+                <button key={intent}
+                  disabled={sending}
+                  onClick={() => {
+                    const newIntent = intentPrefix === intent ? '' : intent
+                    setIntentPrefix(newIntent)
+                    const newInput = buildInput(newIntent, platformPrefix)
+                    setInput(newInput)
+                    setTimeout(() => {
+                      const ta = textareaRef.current
+                      if (ta) {
+                        ta.focus()
+                        const len = ta.value.length
+                        ta.setSelectionRange(len, len)
+                      }
+                    }, 0)
+                  }}
+                  className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${sending ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''} ${
+                    intentPrefix === intent
+                      ? 'bg-zinc-600 text-white border-zinc-500'
+                      : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'
+                  }`}>
+                  {intent}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

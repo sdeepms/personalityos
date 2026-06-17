@@ -207,6 +207,172 @@ characters.put('/:id', async (c) => {
   return c.json({ data })
 })
 
+// GET /api/characters/:id/offers
+characters.get('/:id/offers', async (c) => {
+  const userId = c.get('userId')
+  const { id } = c.req.param()
+
+  const { data: character } = await db(c.env)
+    .from('characters')
+    .select('id')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .single()
+  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
+
+  const { data, error } = await db(c.env)
+    .from('character_offers')
+    .select('*')
+    .eq('character_id', id)
+    .eq('user_id', userId)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true })
+
+  if (error) return c.json({ error: 'Failed to fetch offers', code: 'INTERNAL_ERROR' }, 500)
+  return c.json({ data: data ?? [] })
+})
+
+// POST /api/characters/:id/offers
+characters.post('/:id/offers', async (c) => {
+  const userId = c.get('userId')
+  const { id } = c.req.param()
+
+  const { data: character } = await db(c.env)
+    .from('characters')
+    .select('id')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .single()
+  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
+
+  let body: { label?: unknown; description?: unknown }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
+  }
+
+  const label       = typeof body.label       === 'string' ? body.label.trim()       : ''
+  const description = typeof body.description === 'string' ? body.description.trim() : ''
+
+  if (!label)                   return c.json({ error: 'label is required',                        code: 'BAD_REQUEST' }, 400)
+  if (label.length > 30)        return c.json({ error: 'label must be 30 characters or fewer',     code: 'BAD_REQUEST' }, 400)
+  if (!description)             return c.json({ error: 'description is required',                  code: 'BAD_REQUEST' }, 400)
+  if (description.length > 200) return c.json({ error: 'description must be 200 characters or fewer', code: 'BAD_REQUEST' }, 400)
+
+  const { count, error: countError } = await db(c.env)
+    .from('character_offers')
+    .select('id', { count: 'exact', head: true })
+    .eq('character_id', id)
+    .eq('user_id', userId)
+
+  if (countError) return c.json({ error: 'Failed to check offer count', code: 'INTERNAL_ERROR' }, 500)
+  if ((count ?? 0) >= 10) return c.json({ error: 'Maximum 10 templates allowed', code: 'LIMIT_REACHED' }, 400)
+
+  const { data, error } = await db(c.env)
+    .from('character_offers')
+    .insert({
+      id:           crypto.randomUUID(),
+      character_id: id,
+      user_id:      userId,
+      label,
+      description,
+      sort_order:   0,
+    })
+    .select()
+    .single()
+
+  if (error) return c.json({ error: 'Failed to create offer', code: 'INTERNAL_ERROR' }, 500)
+  return c.json({ data }, 201)
+})
+
+// PUT /api/characters/:id/offers/:oid
+characters.put('/:id/offers/:oid', async (c) => {
+  const userId = c.get('userId')
+  const { id, oid } = c.req.param()
+
+  const { data: character } = await db(c.env)
+    .from('characters')
+    .select('id')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .single()
+  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
+
+  const { data: existingOffer } = await db(c.env)
+    .from('character_offers')
+    .select('id')
+    .eq('id', oid)
+    .eq('character_id', id)
+    .eq('user_id', userId)
+    .single()
+  if (!existingOffer) return c.json({ error: 'Offer not found', code: 'NOT_FOUND' }, 404)
+
+  let body: { label?: unknown; description?: unknown }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
+  }
+
+  const updates: Record<string, string> = {}
+  if (typeof body.label === 'string') {
+    const label = body.label.trim()
+    if (label.length > 30) return c.json({ error: 'label must be 30 characters or fewer', code: 'BAD_REQUEST' }, 400)
+    updates.label = label
+  }
+  if (typeof body.description === 'string') {
+    const description = body.description.trim()
+    if (description.length > 200) return c.json({ error: 'description must be 200 characters or fewer', code: 'BAD_REQUEST' }, 400)
+    updates.description = description
+  }
+
+  const { data, error } = await db(c.env)
+    .from('character_offers')
+    .update(updates)
+    .eq('id', oid)
+    .eq('character_id', id)
+    .eq('user_id', userId)
+    .select()
+    .single()
+
+  if (error) return c.json({ error: 'Failed to update offer', code: 'INTERNAL_ERROR' }, 500)
+  return c.json({ data })
+})
+
+// DELETE /api/characters/:id/offers/:oid
+characters.delete('/:id/offers/:oid', async (c) => {
+  const userId = c.get('userId')
+  const { id, oid } = c.req.param()
+
+  const { data: character } = await db(c.env)
+    .from('characters')
+    .select('id')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .single()
+  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
+
+  const { data: existingOffer } = await db(c.env)
+    .from('character_offers')
+    .select('id')
+    .eq('id', oid)
+    .eq('character_id', id)
+    .eq('user_id', userId)
+    .single()
+  if (!existingOffer) return c.json({ error: 'Offer not found', code: 'NOT_FOUND' }, 404)
+
+  const { error } = await db(c.env)
+    .from('character_offers')
+    .delete()
+    .eq('id', oid)
+    .eq('character_id', id)
+    .eq('user_id', userId)
+
+  if (error) return c.json({ error: 'Failed to delete offer', code: 'INTERNAL_ERROR' }, 500)
+  return c.json({ data: { deleted: true } })
+})
+
 // DELETE /api/characters/:id
 characters.delete('/:id', async (c) => {
   const userId = c.get('userId')
