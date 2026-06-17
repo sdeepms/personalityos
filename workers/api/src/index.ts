@@ -120,13 +120,17 @@ app.post('/api/upload/attachment', async (c) => {
   } catch {
     return c.json({ error: 'Invalid multipart form data', code: 'BAD_REQUEST' }, 400)
   }
+  console.log('[upload/attachment] body keys:', Object.keys(body), 'file type:', typeof body['file'], body['file'] instanceof File)
 
   const imageFile = body['file']
   if (!(imageFile instanceof File)) return c.json({ error: 'file is required', code: 'BAD_REQUEST' }, 400)
 
-  const validMimeTypes = ['image/jpeg', 'image/png']
-  if (!validMimeTypes.includes(imageFile.type)) {
-    return c.json({ error: `Invalid file type: ${imageFile.type}. Only JPEG and PNG allowed.`, code: 'INVALID_FILE_TYPE' }, 400)
+  console.log('[upload/attachment] file name:', imageFile.name, 'size:', imageFile.size, 'type:', imageFile.type)
+
+  const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp']
+  const mimeType = imageFile.type
+  if (mimeType && !validMimeTypes.includes(mimeType)) {
+    return c.json({ error: `Invalid file type: ${mimeType}`, code: 'INVALID_FILE_TYPE' }, 400)
   }
   if (imageFile.size > 10 * 1024 * 1024) {
     return c.json({ error: 'File too large. Maximum 10 MB.', code: 'FILE_TOO_LARGE' }, 413)
@@ -134,7 +138,10 @@ app.post('/api/upload/attachment', async (c) => {
 
   const id          = crypto.randomUUID()
   const contentType = imageFile.type || 'image/jpeg'
-  const r2Path      = `attachments/${userId}/${id}.jpg`
+  const ext         = imageFile.type === 'image/png' ? 'png'
+    : imageFile.type === 'image/webp' ? 'webp'
+    : 'jpg'
+  const r2Path      = `attachments/${userId}/${id}.${ext}`
   const buffer      = await imageFile.arrayBuffer()
   await c.env.STORAGE.put(r2Path, buffer, { httpMetadata: { contentType } })
 

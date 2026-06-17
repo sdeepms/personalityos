@@ -6,7 +6,7 @@ import { assemblePortraitPrompt, getStyleDescription, type PortraitPromptData } 
 
 export const characters = new Hono<{ Bindings: Env; Variables: Variables }>()
 
-const VALID_MIME_TYPES = ['image/jpeg', 'image/png']
+const VALID_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 
 type ReferenceImage = { url: string; pose_type: string; is_primary: boolean }

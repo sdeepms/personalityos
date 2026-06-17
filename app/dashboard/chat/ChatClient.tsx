@@ -964,6 +964,7 @@ export default function ChatClient() {
   const [showAttachmentPicker,  setShowAttachmentPicker]  = useState(false)
   const [savedProducts,         setSavedProducts]         = useState<SavedProduct[]>([])
   const [pickerLoading,         setPickerLoading]         = useState(false)
+  const [attachmentError,       setAttachmentError]       = useState<string | null>(null)
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -1301,9 +1302,21 @@ export default function ChatClient() {
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: formData,
       })
-      if (!res.ok) return
+      console.log('[attachment] upload response status:', res.status)
+      const responseText = await res.text()
+      console.log('[attachment] upload response body:', responseText)
+      if (!res.ok) {
+        const errMsg = res.status === 400
+          ? 'Invalid file type. Use JPEG, PNG, or WebP.'
+          : 'Upload failed. Please try again.'
+        setAttachmentError(errMsg)
+        setTimeout(() => setAttachmentError(null), 3000)
+        return
+      }
 
-      const json = await res.json() as { id: string; r2_path: string; public_url: string }
+      const json = JSON.parse(responseText) as { id?: string; public_url?: string }
+      if (!json.id || !json.public_url) return
+
       const previewUrl = URL.createObjectURL(file)
       const attachmentType: AttachmentType = character?.character_type === 'reseller'
         ? 'product_image'
@@ -1322,7 +1335,11 @@ export default function ChatClient() {
         const filtered = prev.filter(a => a.type !== attachmentType)
         return [...filtered, attachment]
       })
-    } catch { /* silent */ }
+      setAttachmentError(null)
+    } catch {
+      setAttachmentError('Upload failed. Please try again.')
+      setTimeout(() => setAttachmentError(null), 3000)
+    }
     finally { setPickerLoading(false) }
   }
 
@@ -1830,6 +1847,9 @@ export default function ChatClient() {
                 </div>
               ))}
             </div>
+          )}
+          {attachmentError && (
+            <p className="text-xs text-red-400 mt-1">{attachmentError}</p>
           )}
 
           <div className="flex items-end gap-2 sm:gap-3">
