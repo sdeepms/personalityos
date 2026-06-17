@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { RefreshCw, Share2, Download, Copy, Check, ChevronLeft, ChevronRight, X, ChevronDown } from 'lucide-react'
+import { RefreshCw, Share2, Download, Copy, Check, ChevronLeft, ChevronRight, X, ChevronDown, MoreVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/browser'
 
@@ -905,6 +905,9 @@ export default function ChatClient() {
 
   const scrollRef   = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const menuRef     = useRef<HTMLDivElement>(null)
+
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -933,6 +936,16 @@ export default function ChatClient() {
   useEffect(() => {
     setModalCaptionExpanded(false)
   }, [modalGeneration])
+
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    if (menuOpen) document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [menuOpen])
 
   useEffect(() => {
     if (!characterId) { router.replace('/dashboard'); return }
@@ -1275,13 +1288,38 @@ export default function ChatClient() {
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <Link href={`/dashboard/library?id=${character.id}`}>
-              <Button size="sm" variant="outline" className="bg-black text-white border-white hover:bg-zinc-900 hover:text-white hover:border-white px-2.5 text-xs sm:px-3">Library</Button>
-            </Link>
-            <Link href={`/dashboard/settings?id=${character.id}`}>
-              <Button size="sm" variant="outline" className="bg-black text-white border-white hover:bg-zinc-900 hover:text-white hover:border-white px-2.5 text-xs sm:px-3">Settings</Button>
-            </Link>
+          <div className="relative shrink-0" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen(v => !v)}
+              className="p-2 rounded-lg text-[#a1a1aa] hover:text-white hover:bg-[#262626] transition-colors"
+              aria-label="More options"
+            >
+              <MoreVertical size={18} />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-1 min-w-[160px] rounded-lg border border-[#262626] bg-[#1a1a1a] shadow-lg z-50">
+                <button
+                  onClick={() => { router.push(`/dashboard/library?id=${character.id}`); setMenuOpen(false) }}
+                  className="flex w-full items-center gap-3 rounded-t-lg px-4 py-2.5 text-left text-sm text-[#a1a1aa] hover:bg-[#262626] hover:text-white"
+                >
+                  📚 Library
+                </button>
+                <button
+                  onClick={() => { router.push(`/dashboard/settings?id=${character.id}`); setMenuOpen(false) }}
+                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-[#a1a1aa] hover:bg-[#262626] hover:text-white${character.character_type === 'reseller' ? '' : ' rounded-b-lg'}`}
+                >
+                  ⚙️ Edit character
+                </button>
+                {character.character_type === 'reseller' && (
+                  <button
+                    onClick={() => { router.push(`/dashboard/templates?id=${character.id}`); setMenuOpen(false) }}
+                    className="flex w-full items-center gap-3 rounded-b-lg px-4 py-2.5 text-left text-sm text-[#a1a1aa] hover:bg-[#262626] hover:text-white"
+                  >
+                    📋 Templates
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </header>
