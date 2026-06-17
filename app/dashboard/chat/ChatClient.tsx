@@ -1696,7 +1696,8 @@ export default function ChatClient() {
             className="fixed inset-0 bg-black/60 z-40"
             onClick={() => setShowProfile(false)}
           />
-          <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#141414] border-t border-[#262626] rounded-t-2xl max-h-[85vh] overflow-y-auto">
+          <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center">
+            <div className="relative w-full max-w-sm bg-[#141414] border border-[#262626] rounded-t-2xl max-h-[85vh] overflow-y-auto mx-auto">
             <div className="flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 rounded-full bg-[#404040]" />
             </div>
@@ -1713,10 +1714,10 @@ export default function ChatClient() {
                   <img
                     src={profileImageUrl}
                     alt={character.name}
-                    className="w-28 h-28 rounded-full object-cover border-2 border-[#262626]"
+                    className="mx-auto block w-48 h-56 rounded-2xl object-cover border-2 border-[#262626]"
                   />
                 ) : (
-                  <div className="w-28 h-28 rounded-full bg-indigo-600 flex items-center justify-center border-2 border-[#262626]">
+                  <div className="mx-auto w-48 h-56 rounded-2xl bg-indigo-600 flex items-center justify-center border-2 border-[#262626]">
                     <span className="text-2xl font-bold text-white">{getInitials(character.name)}</span>
                   </div>
                 )}
@@ -1767,6 +1768,7 @@ export default function ChatClient() {
                 </button>
               </div>
             </div>
+            </div>{/* end max-w-sm card */}
           </div>
         </>
       )}
