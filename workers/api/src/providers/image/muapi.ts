@@ -246,10 +246,12 @@ export class MuAPIAdapter implements GenerationProvider {
     if (!request_id) throw new Error('MuAPI did not return a request_id')
     console.log('[muapi] job submitted, request_id:', request_id)
 
+    const PRODUCT_MAX_ATTEMPTS = 45
+
     let attempts = 0
     let outputUrl: string | null = null
 
-    while (attempts < MAX_ATTEMPTS) {
+    while (attempts < PRODUCT_MAX_ATTEMPTS) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
 
       let statusRes: Response
@@ -284,7 +286,7 @@ export class MuAPIAdapter implements GenerationProvider {
       attempts++
     }
 
-    if (!outputUrl) throw new Error('MuAPI generateProductPhotography timed out after 100 seconds')
+    if (!outputUrl) throw new Error('MuAPI generateProductPhotography timed out after 180 seconds')
 
     console.log('[muapi] product photography done, outputUrl:', outputUrl)
 
