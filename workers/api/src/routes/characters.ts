@@ -40,7 +40,8 @@ characters.post('/edit-portrait', async (c) => {
   }
 
   console.log('[edit-portrait] editing image')
-  const result = await getImageProvider(c.env).editPortrait(body.current_image_url, body.edit_prompt, '1:1')
+  const constrainedPrompt = `${body.edit_prompt}. Keep the person's face, identity, skin tone, and facial features exactly the same. Only apply the requested change. Do not alter the person's likeness in any way.`
+  const result = await getImageProvider(c.env).editPortrait(body.current_image_url, constrainedPrompt, '1:1')
   return c.json({ image_url: result.outputUrl })
 })
 

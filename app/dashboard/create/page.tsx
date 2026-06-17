@@ -59,7 +59,9 @@ export default function CreateCharacterPage() {
     style_preset: '',
   })
 
-  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
+  const [imageHistory, setImageHistory] = useState<string[]>([])
+  const [historyIndex, setHistoryIndex] = useState<number>(-1)
+  const previewImageUrl = historyIndex >= 0 ? imageHistory[historyIndex] : null
   const [previewMode, setPreviewMode] = useState<'generated' | 'uploaded'>('generated')
   const [editPrompt, setEditPrompt] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -107,8 +109,10 @@ export default function CreateCharacterPage() {
   }
 
   function switchTab(mode: 'generated' | 'uploaded') {
+    if (mode === previewMode) return
     setPreviewMode(mode)
-    setPreviewImageUrl(null)
+    setImageHistory([])
+    setHistoryIndex(-1)
     setUploadedFile(null)
     if (uploadedPreviewUrl) { URL.revokeObjectURL(uploadedPreviewUrl); setUploadedPreviewUrl(null) }
   }
@@ -135,7 +139,12 @@ export default function CreateCharacterPage() {
       })
       const data = await res.json() as { image_url?: string; error?: string }
       if (!res.ok || !data.image_url) throw new Error(data.error ?? 'Failed to generate portrait')
-      setPreviewImageUrl(data.image_url)
+      const newImageUrl = data.image_url
+      setImageHistory(prev => {
+        const trimmed = prev.slice(0, historyIndex + 1)
+        return [...trimmed, newImageUrl]
+      })
+      setHistoryIndex(prev => prev + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate portrait')
     } finally {
@@ -155,7 +164,12 @@ export default function CreateCharacterPage() {
       })
       const data = await res.json() as { image_url?: string; error?: string }
       if (!res.ok || !data.image_url) throw new Error(data.error ?? 'Failed to edit portrait')
-      setPreviewImageUrl(data.image_url)
+      const newImageUrl = data.image_url
+      setImageHistory(prev => {
+        const trimmed = prev.slice(0, historyIndex + 1)
+        return [...trimmed, newImageUrl]
+      })
+      setHistoryIndex(prev => prev + 1)
       setEditPrompt('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to edit portrait')
@@ -578,6 +592,29 @@ export default function CreateCharacterPage() {
                       alt="Generated portrait"
                       className="aspect-square w-full rounded-lg object-cover"
                     />
+                    {imageHistory.length > 1 && (
+                      <div className="flex items-center justify-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setHistoryIndex(prev => prev - 1)}
+                          disabled={historyIndex === 0}
+                          className="text-xs text-[#a1a1aa] transition-colors hover:text-white disabled:opacity-30"
+                        >
+                          ← Previous
+                        </button>
+                        <span className="text-xs text-[#a1a1aa]">
+                          Version {historyIndex + 1} of {imageHistory.length}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryIndex(prev => prev + 1)}
+                          disabled={historyIndex === imageHistory.length - 1}
+                          className="text-xs text-[#a1a1aa] transition-colors hover:text-white disabled:opacity-30"
+                        >
+                          Next →
+                        </button>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <label className="block text-sm font-medium text-white">Edit this image</label>
                       <textarea
