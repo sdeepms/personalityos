@@ -212,13 +212,71 @@ characters.delete('/:id', async (c) => {
   const userId = c.get('userId')
   const { id } = c.req.param()
 
-  const { error } = await db(c.env)
+  // Step 1 — Verify ownership
+  const { data: character } = await db(c.env)
+    .from('characters')
+    .select('id, user_id')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .single()
+  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
+  console.log('[delete-character] step 1: verified ownership')
+
+  // Step 2 — Delete R2 reference images
+  try {
+    const refList = await c.env.STORAGE.list({ prefix: `identity/${userId}/${id}/` })
+    for (const obj of refList.objects) {
+      await c.env.STORAGE.delete(obj.key)
+    }
+    console.log(`[delete-character] step 2: deleted ${refList.objects.length} R2 reference images`)
+  } catch (err) {
+    console.warn('[delete-character] step 2: R2 reference image delete failed, continuing', err)
+  }
+
+  // Step 3 — Delete R2 generated images
+  try {
+    const genList = await c.env.STORAGE.list({ prefix: `generations/${userId}/${id}/` })
+    for (const obj of genList.objects) {
+      await c.env.STORAGE.delete(obj.key)
+    }
+    console.log(`[delete-character] step 3: deleted ${genList.objects.length} R2 generated images`)
+  } catch (err) {
+    console.warn('[delete-character] step 3: R2 generated image delete failed, continuing', err)
+  }
+
+  // Step 4 — Delete character_offers
+  const { error: offersError } = await db(c.env)
+    .from('character_offers')
+    .delete()
+    .eq('character_id', id)
+  if (offersError) console.warn('[delete-character] step 4: failed to delete offers', offersError)
+  else console.log('[delete-character] step 4: deleted offers')
+
+  // Step 5 — Delete character_products
+  const { error: productsError } = await db(c.env)
+    .from('character_products')
+    .delete()
+    .eq('character_id', id)
+  if (productsError) console.warn('[delete-character] step 5: failed to delete products', productsError)
+  else console.log('[delete-character] step 5: deleted products')
+
+  // Step 6 — Delete generations
+  const { error: gensError } = await db(c.env)
+    .from('generations')
+    .delete()
+    .eq('character_id', id)
+  if (gensError) console.warn('[delete-character] step 6: failed to delete generations', gensError)
+  else console.log('[delete-character] step 6: deleted generations')
+
+  // Step 7 — Delete character row
+  const { error: charError } = await db(c.env)
     .from('characters')
     .delete()
     .eq('id', id)
     .eq('user_id', userId)
+  if (charError) return c.json({ error: 'Failed to delete character', code: 'INTERNAL_ERROR' }, 500)
+  console.log('[delete-character] step 7: deleted character row')
 
-  if (error) return c.json({ error: 'Failed to delete character', code: 'INTERNAL_ERROR' }, 500)
   return c.json({ data: { deleted: true } })
 })
 

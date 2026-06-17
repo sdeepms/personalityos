@@ -113,6 +113,12 @@ export default function SettingsClient() {
 
   const [modalImageUrl, setModalImageUrl] = useState<string | null>(null)
 
+  // ── Danger Zone ────────────────────────────────────────────────────────────
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [confirmName,     setConfirmName]     = useState('')
+  const [deleting,        setDeleting]        = useState(false)
+  const [deleteError,     setDeleteError]     = useState<string | null>(null)
+
   useEffect(() => {
     if (!characterId) { setLoadError('No character ID.'); setLoading(false); return }
     const supabase = createClient()
@@ -288,6 +294,25 @@ export default function SettingsClient() {
       setStyleError('Network error.')
     } finally {
       setStyleSaving(false)
+    }
+  }
+
+  async function deleteCharacter() {
+    if (!token || !characterId) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch(`${WORKER_URL}/api/characters/${characterId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const json = await res.json() as { data?: { deleted: boolean }; error?: string }
+      if (!res.ok) { setDeleteError(json.error ?? 'Delete failed.'); return }
+      router.push('/dashboard')
+    } catch {
+      setDeleteError('Network error.')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -621,6 +646,31 @@ export default function SettingsClient() {
           </div>
         </section>
 
+        <hr className="border-[#1f1f1f]" />
+
+        {/* ── Danger Zone ─────────────────────────────────────────────────── */}
+        <section>
+          <div className="rounded-lg border border-red-900/50 p-6">
+            <p className="mb-4 text-sm font-medium text-red-400">Danger Zone</p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-white">Delete this character</p>
+                <p className="mt-1 text-xs text-[#71717a]">
+                  Permanently deletes this character and all their generations, images, and templates.
+                  This cannot be undone.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => { setShowDeleteModal(true); setDeleteError(null); setConfirmName('') }}
+                className="shrink-0 border-red-900 bg-transparent text-red-400 hover:bg-red-950/30 text-sm"
+              >
+                Delete character
+              </Button>
+            </div>
+          </div>
+        </section>
+
         <div className="pb-8" />
       </main>
 
@@ -646,6 +696,51 @@ export default function SettingsClient() {
               alt="Reference photo"
               className="w-full rounded-xl object-contain max-h-[80vh]"
             />
+          </div>
+        </div>
+      )}
+
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-black/70">
+          <div className="fixed left-1/2 top-1/2 mx-4 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[#262626] bg-[#141414] p-6">
+            <h2 className="text-lg font-semibold text-white">Delete {character.name}?</h2>
+            <div className="mt-3 rounded-lg border border-amber-900/50 bg-amber-950/30 p-3">
+              <p className="text-xs text-amber-400">
+                This will permanently delete this character and all associated content including
+                reference images, generations, and templates.
+              </p>
+            </div>
+            <div className="mt-4">
+              <label className="text-sm text-[#a1a1aa]">
+                Type <span className="font-medium text-white">{character.name}</span> to confirm:
+              </label>
+              <input
+                value={confirmName}
+                onChange={e => setConfirmName(e.target.value)}
+                placeholder={character.name}
+                className="mt-2 w-full rounded-lg border border-[#262626] bg-[#141414] px-3 py-2 text-sm text-white placeholder-[#71717a] outline-none focus:border-red-500"
+              />
+            </div>
+            {deleteError && (
+              <div className="mt-3 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-2">
+                <p className="text-sm text-red-400">{deleteError}</p>
+              </div>
+            )}
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => { setShowDeleteModal(false); setConfirmName(''); setDeleteError(null) }}
+                className="text-sm text-[#a1a1aa] transition-colors hover:text-white"
+              >
+                Cancel
+              </button>
+              <Button
+                onClick={deleteCharacter}
+                disabled={confirmName.trim() !== character.name || deleting}
+                className={`bg-red-600 text-sm text-white hover:bg-red-500 ${confirmName.trim() !== character.name || deleting ? 'cursor-not-allowed opacity-50' : ''}`}
+              >
+                {deleting ? 'Deleting…' : 'Delete permanently'}
+              </Button>
+            </div>
           </div>
         </div>
       )}
