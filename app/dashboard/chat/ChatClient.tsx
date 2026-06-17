@@ -1047,7 +1047,6 @@ export default function ChatClient() {
       const imageTimeS = ((Date.now() - start) / 1000).toFixed(1)
       const totalTimeS = ((Date.now() - generationStart) / 1000).toFixed(1)
       const cdnUrl      = json.data!.image_url
-      const generationId = json.data!.generation_id
 
       // Show CDN image immediately
       setGenerations(prev => prev.map(g =>
@@ -1057,37 +1056,6 @@ export default function ChatClient() {
       ))
       setGenerationCount(prev => prev + 1)
       setTimeout(() => textareaRef.current?.focus(), 150)
-
-      // Background: upload binary to R2 via Worker, then swap to permanent URL
-      if (generationId) {
-        ;(async () => {
-          try {
-            console.log('[save-to-r2] firing, generationId:', generationId, 'cdnUrl:', cdnUrl)
-            const imgRes = await fetch(cdnUrl)
-            if (!imgRes.ok) return
-            const blob = await imgRes.blob()
-            const fd   = new FormData()
-            fd.append('image', blob, 'image.png')
-            const saveRes = await fetch(`${WORKER_URL}/api/generations/${generationId}/save-to-r2`, {
-              method:  'POST',
-              headers: { Authorization: `Bearer ${authToken}` },
-              body:    fd,
-            })
-            if (!saveRes.ok) return
-            const saveJson = await saveRes.json() as { permanent_url?: string }
-            if (saveJson.permanent_url) {
-              setGenerations(prev => prev.map(g =>
-                g.localId === localId
-                  ? { ...g, imageUrl: `${WORKER_URL}${saveJson.permanent_url}` }
-                  : g
-              ))
-            }
-          } catch (err) {
-            console.error('[save-to-r2] VISIBLE FAILURE:', err)
-            // Also log the response status if available
-          }
-        })()
-      }
 
     } catch {
       setGenerations(prev => prev.map(g =>
