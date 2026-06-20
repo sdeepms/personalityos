@@ -260,7 +260,11 @@ function formatDate(dateStr?: string): string {
  */
 function pairHistoryItems(items: HistoryItem[]): ActiveGeneration[] {
   const textGens  = items.filter(i => i.generation_type === 'text')
-  const imageGens = items.filter(i => i.generation_type === 'image')
+  const imageGens = items.filter(i =>
+    i.generation_type === 'image' ||
+    i.generation_type === 'product_image' ||
+    i.generation_type === 'product_photography'
+  )
   const pairedImageIds = new Set<string>()
   const result: ActiveGeneration[] = []
 
