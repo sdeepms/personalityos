@@ -120,12 +120,8 @@ app.post('/api/upload/attachment', async (c) => {
   } catch {
     return c.json({ error: 'Invalid multipart form data', code: 'BAD_REQUEST' }, 400)
   }
-  console.log('[upload/attachment] body keys:', Object.keys(body), 'file type:', typeof body['file'], body['file'] instanceof File)
-
   const imageFile = body['file']
   if (!(imageFile instanceof File)) return c.json({ error: 'file is required', code: 'BAD_REQUEST' }, 400)
-
-  console.log('[upload/attachment] file name:', imageFile.name, 'size:', imageFile.size, 'type:', imageFile.type)
 
   const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp']
   const mimeType = imageFile.type

@@ -965,6 +965,8 @@ export default function ChatClient() {
   const [savedProducts,         setSavedProducts]         = useState<SavedProduct[]>([])
   const [pickerLoading,         setPickerLoading]         = useState(false)
   const [attachmentError,       setAttachmentError]       = useState<string | null>(null)
+  const [pickerProductName,     setPickerProductName]     = useState('')
+  const [pendingProductName,    setPendingProductName]    = useState('')
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -1008,6 +1010,7 @@ export default function ChatClient() {
     function handleOutside(e: MouseEvent) {
       if (attachmentPickerRef.current && !attachmentPickerRef.current.contains(e.target as Node)) {
         setShowAttachmentPicker(false)
+        setPickerProductName('')
       }
     }
     if (showAttachmentPicker) document.addEventListener('mousedown', handleOutside)
@@ -1302,9 +1305,7 @@ export default function ChatClient() {
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: formData,
       })
-      console.log('[attachment] upload response status:', res.status)
       const responseText = await res.text()
-      console.log('[attachment] upload response body:', responseText)
       if (!res.ok) {
         const errMsg = res.status === 400
           ? 'Invalid file type. Use JPEG, PNG, or WebP.'
@@ -1325,7 +1326,7 @@ export default function ChatClient() {
       const attachment: Attachment = {
         id: json.id,
         type: attachmentType,
-        label: file.name.replace(/\.[^.]+$/, '').slice(0, 30),
+        label: pendingProductName || file.name.replace(/\.[^.]+$/, '').slice(0, 30),
         public_url: `${WORKER_URL}${json.public_url}`,
         preview_url: previewUrl,
         source: 'fresh_upload',
@@ -1336,6 +1337,8 @@ export default function ChatClient() {
         return [...filtered, attachment]
       })
       setAttachmentError(null)
+      setPendingProductName('')
+      setPickerProductName('')
     } catch {
       setAttachmentError('Upload failed. Please try again.')
       setTimeout(() => setAttachmentError(null), 3000)
@@ -1877,13 +1880,36 @@ export default function ChatClient() {
                 <div className="absolute bottom-full left-0 mb-2 bg-[#1a1a1a] border border-[#262626] rounded-xl shadow-xl w-64 z-50 p-3">
                   {character.character_type === 'reseller' ? (
                     <>
-                      <p className="text-xs text-[#71717a] mb-2">Add product</p>
-                      <button
-                        onClick={() => attachmentFileInputRef.current?.click()}
-                        className="w-full text-left text-sm text-[#a1a1aa] hover:text-white px-2 py-2 rounded-lg hover:bg-[#262626] flex items-center gap-2"
-                      >
-                        📷 Upload product photo
-                      </button>
+                      <p className="text-xs text-[#71717a] mb-3">What are you featuring?</p>
+                      <input
+                        type="text"
+                        placeholder="e.g. Red Silk Kurti"
+                        value={pickerProductName}
+                        onChange={e => setPickerProductName(e.target.value)}
+                        maxLength={30}
+                        className="w-full rounded-lg border border-[#262626] bg-[#0a0a0a] px-3 py-2 text-sm text-white placeholder:text-[#71717a] focus:border-indigo-500 focus:outline-none mt-1 mb-3"
+                      />
+                      <div className="flex flex-wrap gap-1.5">
+                        {['👗 Kurti', '💃 Saree', '👔 Shirt', '👗 Dress',
+                          '💍 Necklace', '💍 Ring', '📿 Earrings', '⌚ Watch',
+                          '👜 Bag', '👟 Shoes', '🕶️ Sunglasses', '📱 Phone'].map(chip => {
+                          const name = chip.replace(/^\S+\s/, '')
+                          return (
+                            <button
+                              key={chip}
+                              type="button"
+                              onClick={() => setPickerProductName(name)}
+                              className={`rounded-full border px-2 py-1 text-[10px] transition-colors cursor-pointer ${
+                                pickerProductName === name
+                                  ? 'border-indigo-500 text-indigo-400'
+                                  : 'border-[#404040] bg-[#141414] text-[#a1a1aa] hover:border-indigo-500 hover:text-white'
+                              }`}
+                            >
+                              {chip}
+                            </button>
+                          )
+                        })}
+                      </div>
                       {savedProducts.length > 0 && (
                         <>
                           <hr className="border-[#262626] my-2" />
@@ -1905,6 +1931,17 @@ export default function ChatClient() {
                           </div>
                         </>
                       )}
+                      <button
+                        type="button"
+                        disabled={pickerProductName.trim() === ''}
+                        onClick={() => {
+                          setPendingProductName(pickerProductName.trim())
+                          attachmentFileInputRef.current?.click()
+                        }}
+                        className="w-full mt-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 text-sm text-white font-medium transition-colors"
+                      >
+                        Select Photo →
+                      </button>
                     </>
                   ) : (
                     <>
@@ -1925,7 +1962,7 @@ export default function ChatClient() {
             <input
               ref={attachmentFileInputRef}
               type="file"
-              accept="image/jpeg,image/png"
+              accept="image/jpeg,image/png,image/webp"
               className="hidden"
               onChange={handleAttachmentFileSelect}
             />

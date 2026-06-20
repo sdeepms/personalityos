@@ -6,6 +6,7 @@ import { getImageProvider } from '../providers/factory'
 import { assembleImagePrompt } from '../services/prompt-builder'
 import type { CharacterForPrompt } from '../services/prompt-builder'
 import type { GenerationResult } from '../providers/interface'
+import { detectProductCategory, buildProductPrompt } from '../services/product-prompt-builder'
 
 export const generate = new Hono<{ Bindings: Env; Variables: Variables }>()
 
@@ -21,6 +22,10 @@ type Character = CharacterForPrompt & {
   name: string
   reference_images_ready: number
   character_type: string | null
+  gender: string | null
+  nationality: string | null
+  age_range: string | null
+  style_preset: string | null
 }
 
 function db(env: Env) {
@@ -98,7 +103,7 @@ generate.post('/image', async (c) => {
     console.log('[generate/image] fetching character:', character_id)
     const { data: character, error: charError } = await db(c.env)
       .from('characters')
-      .select('id, user_id, name, visual_style_prompt, prompt_dna, reference_image_urls, reference_images_ready, character_type')
+      .select('id, user_id, name, visual_style_prompt, prompt_dna, reference_image_urls, reference_images_ready, character_type, gender, nationality, age_range, style_preset')
       .eq('id', character_id)
       .eq('user_id', userId)
       .single<Character>()
@@ -131,44 +136,50 @@ generate.post('/image', async (c) => {
 
     // 4-5. Determine generation path and run
     const productAttachment = attachments?.find(a => a.type === 'product_image')
-    let personImageUrl: string | null = null
     let generationType = 'image'
 
-    if (productAttachment && character.character_type === 'reseller') {
-      try {
-        const refs = JSON.parse(character.reference_image_urls ?? '[]') as Array<{ url: string; is_primary: boolean }>
-        const primary = refs.find(r => r.is_primary) ?? refs[0]
-        if (primary) {
-          personImageUrl = primary.url.startsWith('http')
-            ? primary.url
-            : `${c.env.WORKER_URL}/files/${primary.url}`
-        }
-      } catch { /* no reference image */ }
-    }
+    console.log('[generate/image] assembling prompt for platform:', platform)
+    const assembled = assembleImagePrompt(character, image_description, platform)
 
     let result: GenerationResult
-    if (productAttachment && character.character_type === 'reseller' && personImageUrl) {
-      console.log('[generate/image] using product photography path')
-      result = await getImageProvider(c.env).generateProductPhotography(
-        personImageUrl,
-        productAttachment.public_url,
-        image_description ?? 'Professional product showcase',
-        '1:1'
+    if (productAttachment && character.character_type === 'reseller') {
+      const category = detectProductCategory(productAttachment.label)
+      const productPrompt = buildProductPrompt(
+        productAttachment.label,
+        category,
+        {
+          gender:         character.gender         ?? 'neutral',
+          nationality:    character.nationality     ?? 'Indian',
+          age_range:      character.age_range       ?? '30s',
+          style_preset:   character.style_preset    ?? 'warm',
+          character_type: character.character_type  ?? 'reseller',
+        }
       )
-      generationType = 'product_photography'
+      console.log('[generate/image] product category:', category)
+      console.log('[generate/image] product prompt:', productPrompt.slice(0, 100))
+      result = await getImageProvider(c.env).generateImage(
+        productPrompt,
+        {
+          referenceImageUrl: productAttachment.public_url,
+          aspectRatio:       assembled.aspect_ratio,
+          negativePrompt:    'blurry, low quality, deformed, cartoon, anime, wrong product, different product, different color, text overlay, watermark, ugly, bad anatomy',
+          model:             'nano-banana-edit',
+          userId,
+          characterId:       character_id,
+        }
+      )
+      generationType = 'product_image'
+      console.log('[generate/image] product generation done:', result.outputUrl)
     } else {
-      console.log('[generate/image] assembling prompt for platform:', platform)
-      const assembled = assembleImagePrompt(character, image_description, platform)
       console.log('[generate/image] assembled — ref_url:', assembled.reference_image_url, 'aspect:', assembled.aspect_ratio, 'model:', assembled.model)
-
       console.log('[generate/image] calling generateImage...')
       result = await getImageProvider(c.env).generateImage(assembled.prompt, {
         referenceImageUrl: assembled.reference_image_url ?? undefined,
-        aspectRatio: assembled.aspect_ratio,
-        negativePrompt: assembled.negative_prompt,
-        model: assembled.model,
+        aspectRatio:       assembled.aspect_ratio,
+        negativePrompt:    assembled.negative_prompt,
+        model:             assembled.model,
         userId,
-        characterId: character_id,
+        characterId:       character_id,
       })
       console.log('[generate/image] generation done, outputUrl:', result.outputUrl, 'durationMs:', result.durationMs)
     }
