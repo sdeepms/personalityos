@@ -25,6 +25,8 @@ export type Env = {
   WORKER_URL: string
   // R2 binding
   STORAGE: R2Bucket
+  // Video Queue binding
+  VIDEO_QUEUE: Queue
 }
 
 export type Variables = {
