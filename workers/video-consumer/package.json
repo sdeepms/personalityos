@@ -1,0 +1,20 @@
+{
+  "name": "personalityos-video-consumer",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.108.1",
+    "aws4fetch": "^1.0.20"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250525.0",
+    "@types/node": "^25.9.3",
+    "typescript": "^5",
+    "wrangler": "^4.16.0"
+  }
+}

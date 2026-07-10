@@ -1,0 +1,22 @@
+name = "personalityos-video-consumer"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[queues.consumers]]
+queue_name = "personalityos-video-queue"
+max_batch_size = 1
+max_batch_timeout = 5
+
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "personalityos-storage"
+
+# Secrets (to be set in .dev.vars or wrangler secret put):
+# SUPABASE_URL
+# SUPABASE_SERVICE_KEY
+# SARVAM_API_KEY
+# FAL_KEY
+# MUAPI_API_KEY
+# CREATOMATE_API_KEY
+# SUBMAGIC_API_KEY

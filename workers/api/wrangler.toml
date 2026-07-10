@@ -10,6 +10,10 @@ LLM_PROVIDER = "openrouter"
 binding = "STORAGE"
 bucket_name = "personalityos-storage"
 
+[[queues.producers]]
+binding = "VIDEO_QUEUE"
+queue_name = "personalityos-video-queue"
+
 # Secrets (set via `wrangler secret put` in production — stored in .dev.vars locally):
 # SUPABASE_URL
 # SUPABASE_ANON_KEY
