@@ -109,7 +109,6 @@ function CharacterCard({ character }: { character: Character }) {
             {character.name}
             {character.character_type === 'educator' && <span className="ml-1.5 text-base">🎓</span>}
             {character.character_type === 'creator'  && <span className="ml-1.5 text-base">✨</span>}
-            {character.character_type === 'reseller' && <span className="ml-1.5 text-base">🛍️</span>}
           </p>
           <p className="text-xs text-zinc-400">{character.domain}</p>
         </div>

@@ -4,7 +4,7 @@ compatibility_date = "2025-05-01"
 compatibility_flags = ["nodejs_compat"]
 
 [[queues.consumers]]
-queue_name = "personalityos-video-queue"
+queue = "personalityos-video-queue"
 max_batch_size = 1
 max_batch_timeout = 5
 

@@ -6,12 +6,11 @@ import { getImageProvider } from '../providers/factory'
 import { assembleImagePrompt } from '../services/prompt-builder'
 import type { CharacterForPrompt } from '../services/prompt-builder'
 import type { GenerationResult } from '../providers/interface'
-import { detectProductCategory, buildProductPrompt } from '../services/product-prompt-builder'
 
 export const generate = new Hono<{ Bindings: Env; Variables: Variables }>()
 
 type Attachment = {
-  type: 'product_image' | 'reference_image'
+  type: 'reference_image'
   public_url: string
   label: string
 }
@@ -135,54 +134,22 @@ generate.post('/image', async (c) => {
     }
 
     // 4-5. Determine generation path and run
-    const productAttachment = attachments?.find(a => a.type === 'product_image')
     let generationType = 'image'
 
     console.log('[generate/image] assembling prompt for platform:', platform)
     const assembled = assembleImagePrompt(character, image_description, platform)
 
-    let result: GenerationResult
-    if (productAttachment && character.character_type === 'reseller') {
-      const category = detectProductCategory(productAttachment.label)
-      const productPrompt = buildProductPrompt(
-        productAttachment.label,
-        category,
-        {
-          gender:         character.gender         ?? 'neutral',
-          nationality:    character.nationality     ?? 'Indian',
-          age_range:      character.age_range       ?? '30s',
-          style_preset:   character.style_preset    ?? 'warm',
-          character_type: character.character_type  ?? 'reseller',
-        }
-      )
-      console.log('[generate/image] product category:', category)
-      console.log('[generate/image] product prompt:', productPrompt.slice(0, 100))
-      result = await getImageProvider(c.env).generateImage(
-        productPrompt,
-        {
-          referenceImageUrl: productAttachment.public_url,
-          aspectRatio:       assembled.aspect_ratio,
-          negativePrompt:    'blurry, low quality, deformed, cartoon, anime, wrong product, different product, different color, text overlay, watermark, ugly, bad anatomy',
-          model:             'nano-banana-edit',
-          userId,
-          characterId:       character_id,
-        }
-      )
-      generationType = 'product_image'
-      console.log('[generate/image] product generation done:', result.outputUrl)
-    } else {
-      console.log('[generate/image] assembled — ref_url:', assembled.reference_image_url, 'aspect:', assembled.aspect_ratio, 'model:', assembled.model)
-      console.log('[generate/image] calling generateImage...')
-      result = await getImageProvider(c.env).generateImage(assembled.prompt, {
-        referenceImageUrl: assembled.reference_image_url ?? undefined,
-        aspectRatio:       assembled.aspect_ratio,
-        negativePrompt:    assembled.negative_prompt,
-        model:             assembled.model,
-        userId,
-        characterId:       character_id,
-      })
-      console.log('[generate/image] generation done, outputUrl:', result.outputUrl, 'durationMs:', result.durationMs)
-    }
+    console.log('[generate/image] assembled — ref_url:', assembled.reference_image_url, 'aspect:', assembled.aspect_ratio, 'model:', assembled.model)
+    console.log('[generate/image] calling generateImage...')
+    const result = await getImageProvider(c.env).generateImage(assembled.prompt, {
+      referenceImageUrl: assembled.reference_image_url ?? undefined,
+      aspectRatio:       assembled.aspect_ratio,
+      negativePrompt:    assembled.negative_prompt,
+      model:             assembled.model,
+      userId,
+      characterId:       character_id,
+    })
+    console.log('[generate/image] generation done, outputUrl:', result.outputUrl, 'durationMs:', result.durationMs)
 
     // 6. Pre-generate row ID and save to R2 via base64 or CDN fallback
     const generationId = crypto.randomUUID()

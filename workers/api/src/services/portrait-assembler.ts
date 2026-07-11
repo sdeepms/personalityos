@@ -1,9 +1,7 @@
 export type PortraitPromptData = {
-  character_type: 'educator' | 'creator' | 'reseller'
+  character_type: 'educator' | 'creator'
   name: string
   domain?: string
-  store_name?: string
-  product_category?: string
   gender: string
   age_range: string
   nationality: string
@@ -22,11 +20,6 @@ const STYLE_DESCRIPTIONS: Record<string, Record<string, string>> = {
     opinion_bold: 'confident and bold',
     aesthetic: 'elegant and stylish',
     educational: 'smart and engaging',
-  },
-  reseller: {
-    warm: 'warm and friendly',
-    professional: 'polished and professional',
-    festive: 'vibrant and celebratory',
   },
 }
 
@@ -49,24 +42,13 @@ export function assemblePortraitPrompt(data: PortraitPromptData): string {
     )
   }
 
-  if (character_type === 'creator') {
-    return (
-      `Professional portrait of a ${nationality} ${gender} content ` +
-      `creator in their ${age_range}, ${style_description}, ` +
-      `lifestyle and personal brand photography, engaging expression, ` +
-      `modern casual professional attire, clean background, ` +
-      `natural lighting, high quality photography, ` +
-      `suitable for social media content, realistic, photographic`
-    )
-  }
-
-  // reseller
+  // creator
   return (
-    `Professional portrait of a ${nationality} ${gender} model ` +
-    `in their ${age_range}, warm friendly expression, ` +
-    `${style_description}, clean studio background, ` +
-    `commercial photography quality, suitable for product ` +
-    `brand ambassador content, professional lighting, ` +
-    `sharp focus, realistic, photographic`
+    `Professional portrait of a ${nationality} ${gender} content ` +
+    `creator in their ${age_range}, ${style_description}, ` +
+    `lifestyle and personal brand photography, engaging expression, ` +
+    `modern casual professional attire, clean background, ` +
+    `natural lighting, high quality photography, ` +
+    `suitable for social media content, realistic, photographic`
   )
 }

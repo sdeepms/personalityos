@@ -68,7 +68,7 @@ characters.post('/', async (c) => {
     return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
   }
 
-  const { name, domain, gender, age_range, nationality, style_preset, character_type, store_name } = body as Record<string, string | null | undefined>
+  const { name, domain, gender, age_range, nationality, style_preset, character_type } = body as Record<string, string | null | undefined>
   if (!name || !domain) {
     return c.json({ error: 'name and domain are required', code: 'BAD_REQUEST' }, 400)
   }
@@ -82,10 +82,7 @@ characters.post('/', async (c) => {
   const styleDesc = getStyleDescription(charType, style_preset as string ?? '')
 
   let system_prompt: string
-  if (charType === 'reseller') {
-    const storeName = (store_name as string | null | undefined) ?? `${name}'s store`
-    system_prompt = `You are ${name}, a brand model for ${storeName}. You create content that showcases products in an engaging way. Your communication style is ${styleDesc}. You write captions that highlight the product, mention the price when provided, and include a clear call to action. You only use details the user provides — never invent product specifications or prices.`
-  } else if (charType === 'creator') {
+  if (charType === 'creator') {
     system_prompt = `You are ${name}, a ${domain} content creator. You create content that is ${styleDesc}. Your audience connects with you personally. You share your perspective, experiences, and opinions. You write in an authentic voice that feels genuine and engaging.`
   } else {
     system_prompt = [
@@ -122,7 +119,6 @@ characters.post('/', async (c) => {
       reference_images_ready: 0,
       reference_image_urls: '[]',
       character_type: charType,
-      store_name: (store_name as string | null | undefined) ?? null,
     })
     .select()
     .single()
@@ -207,287 +203,8 @@ characters.put('/:id', async (c) => {
   return c.json({ data })
 })
 
-// GET /api/characters/:id/offers
-characters.get('/:id/offers', async (c) => {
-  const userId = c.get('userId')
-  const { id } = c.req.param()
+// All reseller endpoints (offers, products) removed.
 
-  const { data: character } = await db(c.env)
-    .from('characters')
-    .select('id')
-    .eq('id', id)
-    .eq('user_id', userId)
-    .single()
-  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
-
-  const { data, error } = await db(c.env)
-    .from('character_offers')
-    .select('*')
-    .eq('character_id', id)
-    .eq('user_id', userId)
-    .order('sort_order', { ascending: true })
-    .order('created_at', { ascending: true })
-
-  if (error) return c.json({ error: 'Failed to fetch offers', code: 'INTERNAL_ERROR' }, 500)
-  return c.json({ data: data ?? [] })
-})
-
-// POST /api/characters/:id/offers
-characters.post('/:id/offers', async (c) => {
-  const userId = c.get('userId')
-  const { id } = c.req.param()
-
-  const { data: character } = await db(c.env)
-    .from('characters')
-    .select('id')
-    .eq('id', id)
-    .eq('user_id', userId)
-    .single()
-  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
-
-  let body: { label?: unknown; description?: unknown }
-  try {
-    body = await c.req.json()
-  } catch {
-    return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
-  }
-
-  const label       = typeof body.label       === 'string' ? body.label.trim()       : ''
-  const description = typeof body.description === 'string' ? body.description.trim() : ''
-
-  if (!label)                   return c.json({ error: 'label is required',                        code: 'BAD_REQUEST' }, 400)
-  if (label.length > 30)        return c.json({ error: 'label must be 30 characters or fewer',     code: 'BAD_REQUEST' }, 400)
-  if (!description)             return c.json({ error: 'description is required',                  code: 'BAD_REQUEST' }, 400)
-  if (description.length > 200) return c.json({ error: 'description must be 200 characters or fewer', code: 'BAD_REQUEST' }, 400)
-
-  const { count, error: countError } = await db(c.env)
-    .from('character_offers')
-    .select('id', { count: 'exact', head: true })
-    .eq('character_id', id)
-    .eq('user_id', userId)
-
-  if (countError) return c.json({ error: 'Failed to check offer count', code: 'INTERNAL_ERROR' }, 500)
-  if ((count ?? 0) >= 10) return c.json({ error: 'Maximum 10 templates allowed', code: 'LIMIT_REACHED' }, 400)
-
-  const { data, error } = await db(c.env)
-    .from('character_offers')
-    .insert({
-      id:           crypto.randomUUID(),
-      character_id: id,
-      user_id:      userId,
-      label,
-      description,
-      sort_order:   0,
-    })
-    .select()
-    .single()
-
-  if (error) return c.json({ error: 'Failed to create offer', code: 'INTERNAL_ERROR' }, 500)
-  return c.json({ data }, 201)
-})
-
-// PUT /api/characters/:id/offers/:oid
-characters.put('/:id/offers/:oid', async (c) => {
-  const userId = c.get('userId')
-  const { id, oid } = c.req.param()
-
-  const { data: character } = await db(c.env)
-    .from('characters')
-    .select('id')
-    .eq('id', id)
-    .eq('user_id', userId)
-    .single()
-  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
-
-  const { data: existingOffer } = await db(c.env)
-    .from('character_offers')
-    .select('id')
-    .eq('id', oid)
-    .eq('character_id', id)
-    .eq('user_id', userId)
-    .single()
-  if (!existingOffer) return c.json({ error: 'Offer not found', code: 'NOT_FOUND' }, 404)
-
-  let body: { label?: unknown; description?: unknown }
-  try {
-    body = await c.req.json()
-  } catch {
-    return c.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, 400)
-  }
-
-  const updates: Record<string, string> = {}
-  if (typeof body.label === 'string') {
-    const label = body.label.trim()
-    if (label.length > 30) return c.json({ error: 'label must be 30 characters or fewer', code: 'BAD_REQUEST' }, 400)
-    updates.label = label
-  }
-  if (typeof body.description === 'string') {
-    const description = body.description.trim()
-    if (description.length > 200) return c.json({ error: 'description must be 200 characters or fewer', code: 'BAD_REQUEST' }, 400)
-    updates.description = description
-  }
-
-  const { data, error } = await db(c.env)
-    .from('character_offers')
-    .update(updates)
-    .eq('id', oid)
-    .eq('character_id', id)
-    .eq('user_id', userId)
-    .select()
-    .single()
-
-  if (error) return c.json({ error: 'Failed to update offer', code: 'INTERNAL_ERROR' }, 500)
-  return c.json({ data })
-})
-
-// DELETE /api/characters/:id/offers/:oid
-characters.delete('/:id/offers/:oid', async (c) => {
-  const userId = c.get('userId')
-  const { id, oid } = c.req.param()
-
-  const { data: character } = await db(c.env)
-    .from('characters')
-    .select('id')
-    .eq('id', id)
-    .eq('user_id', userId)
-    .single()
-  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
-
-  const { data: existingOffer } = await db(c.env)
-    .from('character_offers')
-    .select('id')
-    .eq('id', oid)
-    .eq('character_id', id)
-    .eq('user_id', userId)
-    .single()
-  if (!existingOffer) return c.json({ error: 'Offer not found', code: 'NOT_FOUND' }, 404)
-
-  const { error } = await db(c.env)
-    .from('character_offers')
-    .delete()
-    .eq('id', oid)
-    .eq('character_id', id)
-    .eq('user_id', userId)
-
-  if (error) return c.json({ error: 'Failed to delete offer', code: 'INTERNAL_ERROR' }, 500)
-  return c.json({ data: { deleted: true } })
-})
-
-// GET /api/characters/:id/products
-characters.get('/:id/products', async (c) => {
-  const userId = c.get('userId')
-  const { id } = c.req.param()
-
-  const { data: character } = await db(c.env)
-    .from('characters')
-    .select('id')
-    .eq('id', id)
-    .eq('user_id', userId)
-    .single()
-  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
-
-  const { data, error } = await db(c.env)
-    .from('character_products')
-    .select('*')
-    .eq('character_id', id)
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-
-  if (error) return c.json({ error: 'Failed to fetch products', code: 'INTERNAL_ERROR' }, 500)
-  return c.json({ data: data ?? [] })
-})
-
-// POST /api/characters/:id/products
-characters.post('/:id/products', async (c) => {
-  const userId = c.get('userId')
-  const { id } = c.req.param()
-
-  const { data: character } = await db(c.env)
-    .from('characters')
-    .select('id')
-    .eq('id', id)
-    .eq('user_id', userId)
-    .single()
-  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
-
-  let body: Record<string, string | File | (string | File)[]>
-  try {
-    body = await c.req.parseBody({ all: true })
-  } catch {
-    return c.json({ error: 'Invalid multipart form data', code: 'BAD_REQUEST' }, 400)
-  }
-
-  const imageFile = body['file']
-  if (!(imageFile instanceof File)) return c.json({ error: 'file is required', code: 'BAD_REQUEST' }, 400)
-
-  const nameRaw = body['name']
-  const name = typeof nameRaw === 'string' ? nameRaw.trim() : ''
-  if (!name)              return c.json({ error: 'name is required',                        code: 'BAD_REQUEST' }, 400)
-  if (name.length > 50)   return c.json({ error: 'name must be 50 characters or fewer',     code: 'BAD_REQUEST' }, 400)
-
-  if (!VALID_MIME_TYPES.includes(imageFile.type)) {
-    return c.json({ error: `Invalid file type: ${imageFile.type}. Only JPEG and PNG allowed.`, code: 'INVALID_FILE_TYPE' }, 400)
-  }
-  if (imageFile.size > MAX_FILE_SIZE) {
-    return c.json({ error: 'File too large. Maximum 10 MB.', code: 'FILE_TOO_LARGE' }, 413)
-  }
-
-  const productId  = crypto.randomUUID()
-  const contentType = imageFile.type
-  const r2Path     = `products/${userId}/${id}/${productId}.jpg`
-  const buffer     = await imageFile.arrayBuffer()
-  await c.env.STORAGE.put(r2Path, buffer, { httpMetadata: { contentType } })
-
-  const { data, error } = await db(c.env)
-    .from('character_products')
-    .insert({
-      id:           productId,
-      character_id: id,
-      user_id:      userId,
-      name,
-      image_url:    r2Path,
-    })
-    .select()
-    .single()
-
-  if (error) return c.json({ error: 'Failed to create product', code: 'INTERNAL_ERROR' }, 500)
-  return c.json({ data: { id: productId, name, image_url: r2Path, public_url: '/files/' + r2Path } }, 201)
-})
-
-// DELETE /api/characters/:id/products/:pid
-characters.delete('/:id/products/:pid', async (c) => {
-  const userId = c.get('userId')
-  const { id, pid } = c.req.param()
-
-  const { data: character } = await db(c.env)
-    .from('characters')
-    .select('id')
-    .eq('id', id)
-    .eq('user_id', userId)
-    .single()
-  if (!character) return c.json({ error: 'Character not found', code: 'NOT_FOUND' }, 404)
-
-  const { data: product } = await db(c.env)
-    .from('character_products')
-    .select('id, image_url')
-    .eq('id', pid)
-    .eq('character_id', id)
-    .eq('user_id', userId)
-    .single()
-  if (!product) return c.json({ error: 'Product not found', code: 'NOT_FOUND' }, 404)
-
-  await c.env.STORAGE.delete(product.image_url as string)
-
-  const { error } = await db(c.env)
-    .from('character_products')
-    .delete()
-    .eq('id', pid)
-    .eq('character_id', id)
-    .eq('user_id', userId)
-
-  if (error) return c.json({ error: 'Failed to delete product', code: 'INTERNAL_ERROR' }, 500)
-  return c.json({ data: { deleted: true } })
-})
 
 // DELETE /api/characters/:id
 characters.delete('/:id', async (c) => {
@@ -526,21 +243,7 @@ characters.delete('/:id', async (c) => {
     console.warn('[delete-character] step 3: R2 generated image delete failed, continuing', err)
   }
 
-  // Step 4 — Delete character_offers
-  const { error: offersError } = await db(c.env)
-    .from('character_offers')
-    .delete()
-    .eq('character_id', id)
-  if (offersError) console.warn('[delete-character] step 4: failed to delete offers', offersError)
-  else console.log('[delete-character] step 4: deleted offers')
-
-  // Step 5 — Delete character_products
-  const { error: productsError } = await db(c.env)
-    .from('character_products')
-    .delete()
-    .eq('character_id', id)
-  if (productsError) console.warn('[delete-character] step 5: failed to delete products', productsError)
-  else console.log('[delete-character] step 5: deleted products')
+  // Step 4 & 5 (Delete offers/products) removed.
 
   // Step 6 — Delete generations
   const { error: gensError } = await db(c.env)

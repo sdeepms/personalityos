@@ -15,12 +15,4 @@ export class FALAdapter implements GenerationProvider {
     throw new Error('FAL adapter not active in V1')
   }
 
-  generateProductPhotography(
-    _personImageUrl: string,
-    _productImageUrl: string,
-    _prompt: string,
-    _aspectRatio: string
-  ): Promise<GenerationResult> {
-    throw new Error('FAL adapter not active in V1')
-  }
 }

@@ -8,15 +8,10 @@ import { createClient } from '@/lib/supabase/browser'
 const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL ?? 'http://localhost:8787'
 
 type Step = 'type' | 'form' | 'preview'
-type CharacterType = 'educator' | 'creator' | 'reseller'
+type CharacterType = 'educator' | 'creator'
 
 const EDUCATOR_CHIPS = ['UPSC', 'Finance', 'Startup', 'Coaching', 'History', 'Ethics', 'Science', 'Law', 'Other']
 const CREATOR_CHIPS = ['Startup', 'Lifestyle', 'Tech', 'Fitness', 'Fashion', 'Food', 'Travel', 'Finance', 'Other']
-const RESELLER_CATEGORIES = [
-  '👗 Fashion', '💄 Beauty', '📱 Electronics', '🍕 Food',
-  '🏠 Home & Living', '💎 Jewellery', '👟 Footwear', '📚 Books',
-  '🌿 Wellness', 'Other',
-]
 
 const STYLE_PRESETS: Record<CharacterType, Array<{ id: string; name: string; desc: string }>> = {
   educator: [
@@ -29,11 +24,6 @@ const STYLE_PRESETS: Record<CharacterType, Array<{ id: string; name: string; des
     { id: 'motivational', name: 'Motivational', desc: 'Energetic and inspiring. Pushes audience to take action.' },
     { id: 'opinion_bold', name: 'Opinion & Bold', desc: 'Takes strong stances. Not afraid to challenge norms.' },
     { id: 'aesthetic', name: 'Aesthetic & Lifestyle', desc: 'Visual-first, curated, elegant.' },
-  ],
-  reseller: [
-    { id: 'warm', name: 'Friendly & Warm', desc: 'Approachable, personal touch. Feels like buying from a friend.' },
-    { id: 'professional', name: 'Professional', desc: 'Clean, trustworthy, business-like.' },
-    { id: 'festive', name: 'Festive & Exciting', desc: 'High energy, celebration-focused, great for sales and offers.' },
   ],
 }
 
@@ -50,8 +40,6 @@ export default function CreateCharacterPage() {
   const [form, setForm] = useState({
     name: '',
     domain: '',
-    store_name: '',
-    product_category: '',
     gender: '',
     age_range: '',
     nationality: 'Indian',
@@ -97,7 +85,6 @@ export default function CreateCharacterPage() {
     if (!form.style_preset) return 'Communication style is required.'
     if (characterType === 'educator' && !form.domain.trim()) return 'Domain / Expertise is required.'
     if (characterType === 'creator' && !form.domain.trim()) return 'Niche is required.'
-    if (characterType === 'reseller' && !form.product_category) return 'Product category is required.'
     return null
   }
 
@@ -128,9 +115,7 @@ export default function CreateCharacterPage() {
         body: JSON.stringify({
           character_type: characterType,
           name: form.name,
-          domain: form.domain || form.product_category,
-          store_name: form.store_name,
-          product_category: form.product_category,
+          domain: form.domain,
           gender: form.gender,
           age_range: form.age_range,
           nationality: form.nationality === 'Other' ? form.nationality_custom : form.nationality,
@@ -192,13 +177,12 @@ export default function CreateCharacterPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({
           name: form.name,
-          domain: form.domain || form.product_category || form.store_name || '',
+          domain: form.domain || '',
           gender: form.gender || 'neutral',
           age_range: form.age_range || '30s',
           nationality,
           style_preset: form.style_preset,
           character_type: characterType,
-          store_name: form.store_name || null,
         }),
       })
       const json = await res.json() as { data?: { id: string }; error?: string }
@@ -286,12 +270,11 @@ export default function CreateCharacterPage() {
               <h1 className="text-2xl font-semibold tracking-tight text-white">What best describes you?</h1>
               <p className="mt-1 text-sm text-[#a1a1aa]">This shapes your character's voice and content style.</p>
             </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {(
                 [
                   { type: 'educator' as const, icon: '🎓', title: 'Educator / Coach', desc: 'Teachers, UPSC educators, skill coaches, domain experts who share knowledge' },
                   { type: 'creator' as const, icon: '✨', title: 'Creator / Brand', desc: 'Personal brand builders, influencers, lifestyle creators, opinion leaders' },
-                  { type: 'reseller' as const, icon: '🛍️', title: 'Reseller / Store', desc: 'WhatsApp sellers, boutiques, e-commerce stores needing a brand model' },
                 ] as const
               ).map(({ type, icon, title, desc }) => (
                 <button
@@ -317,7 +300,6 @@ export default function CreateCharacterPage() {
             <h1 className="text-2xl font-semibold tracking-tight text-white">
               {characterType === 'educator' && 'Create your Educator character'}
               {characterType === 'creator' && 'Create your Creator character'}
-              {characterType === 'reseller' && 'Create your Store Model'}
             </h1>
 
             {/* Character name */}
@@ -327,7 +309,7 @@ export default function CreateCharacterPage() {
                 type="text"
                 value={form.name}
                 onChange={(e) => setField('name', e.target.value)}
-                placeholder={characterType === 'reseller' ? "e.g. Priya (your brand model's name)" : 'e.g. Arjun'}
+                placeholder="e.g. Arjun"
                 className="w-full rounded-lg border border-[#262626] bg-[#141414] px-3 py-2.5 text-sm text-white placeholder:text-[#71717a] focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
             </section>
@@ -392,45 +374,7 @@ export default function CreateCharacterPage() {
               </section>
             )}
 
-            {/* Reseller: Store name + Product category */}
-            {characterType === 'reseller' && (
-              <>
-                <section>
-                  <label className="mb-2 block text-sm font-medium text-white">
-                    Store / Brand name
-                    <span className="ml-1 text-xs font-normal text-[#71717a]">(optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={form.store_name}
-                    onChange={(e) => setField('store_name', e.target.value)}
-                    placeholder="e.g. Priya's Boutique"
-                    className="w-full rounded-lg border border-[#262626] bg-[#141414] px-3 py-2.5 text-sm text-white placeholder:text-[#71717a] focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                  <p className="mt-1 text-xs text-[#71717a]">Used in captions when generating content</p>
-                </section>
-
-                <section>
-                  <p className="mb-3 text-sm font-medium text-white">What do you sell?</p>
-                  <div className="flex flex-wrap gap-2">
-                    {RESELLER_CATEGORIES.map((cat) => (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => setField('product_category', cat)}
-                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                          form.product_category === cat
-                            ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
-                            : 'border-[#262626] bg-[#141414] text-[#a1a1aa] hover:border-[#404040] hover:text-white'
-                        }`}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              </>
-            )}
+            {/* Reseller section removed */}
 
             {/* Gender */}
             <section>

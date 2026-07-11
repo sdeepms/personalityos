@@ -190,16 +190,6 @@ function resolveImageUrl(url: string | null): string | null {
 }
 
 function getIntentShortcuts(domain: string, characterType?: string | null): string[] {
-  if (characterType === 'reseller') {
-    return [
-      'Today\'s offer',
-      'New arrival',
-      'Flash sale',
-      'Product spotlight',
-      'Customer win',
-    ]
-  }
-
   if (characterType === 'creator') {
     return [
       'Share an opinion',
@@ -1062,31 +1052,6 @@ export default function ChatClient() {
 
         setCharacter(char)
 
-        if (char.character_type === 'reseller') {
-          try {
-            const offersRes = await fetch(
-              `${WORKER_URL}/api/characters/${characterId}/offers`,
-              { headers: { Authorization: `Bearer ${session.access_token}` } }
-            )
-            const offersJson = await offersRes.json() as { data?: Offer[] }
-            setOffers(offersJson.data ?? [])
-          } catch {
-            // offers stay empty, fall through to intent shortcuts
-          }
-
-          try {
-            const productsRes = await fetch(
-              `${WORKER_URL}/api/characters/${characterId}/products`,
-              { headers: { Authorization: `Bearer ${session.access_token}` } }
-            )
-            const productsJson = await productsRes.json() as { data?: Array<{ id: string; name: string; image_url: string }> }
-            setSavedProducts((productsJson.data ?? []).map(p => ({
-              ...p,
-              public_url: `${WORKER_URL}/files/${p.image_url}`,
-            })))
-          } catch { /* products stay empty */ }
-        }
-
         if (histRes.ok) {
           const histJson = await histRes.json() as { data?: HistoryItem[] }
           setHistoryGens(pairHistoryItems(histJson.data ?? []))
@@ -1323,9 +1288,7 @@ export default function ChatClient() {
       if (!json.id || !json.public_url) return
 
       const previewUrl = URL.createObjectURL(file)
-      const attachmentType: AttachmentType = character?.character_type === 'reseller'
-        ? 'product_image'
-        : 'reference_image'
+      const attachmentType: AttachmentType = 'reference_image'
 
       const attachment: Attachment = {
         id: json.id,
@@ -1508,18 +1471,10 @@ export default function ChatClient() {
                 </button>
                 <button
                   onClick={() => { router.push(`/dashboard/settings?id=${character.id}`); setMenuOpen(false) }}
-                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-[#a1a1aa] hover:bg-[#262626] hover:text-white${character.character_type === 'reseller' ? '' : ' rounded-b-lg'}`}
+                  className="flex w-full items-center gap-3 rounded-b-lg px-4 py-2.5 text-left text-sm text-[#a1a1aa] hover:bg-[#262626] hover:text-white"
                 >
                   ⚙️ Edit character
                 </button>
-                {character.character_type === 'reseller' && (
-                  <button
-                    onClick={() => { router.push(`/dashboard/templates?id=${character.id}`); setMenuOpen(false) }}
-                    className="flex w-full items-center gap-3 rounded-b-lg px-4 py-2.5 text-left text-sm text-[#a1a1aa] hover:bg-[#262626] hover:text-white"
-                  >
-                    📋 Templates
-                  </button>
-                )}
               </div>
             )}
           </div>
@@ -1716,75 +1671,33 @@ export default function ChatClient() {
       {/* ── Intent shortcuts / Offer pills ── */}
       <div>
         <div className="mx-auto w-full max-w-5xl px-4 pt-2 sm:px-6">
-          {character.character_type === 'reseller' ? (
-            offers.length > 0 ? (
-              <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1">
-                {offers.map(offer => (
-                  <button
-                    key={offer.id}
-                    type="button"
-                    disabled={sending}
-                    onClick={() => {
-                      const newInput = buildInput(offer.description, platformPrefix)
-                      setInput(newInput)
-                      setIntentPrefix(offer.description)
-                    }}
-                    className="flex-shrink-0 rounded-full border border-[#404040] bg-[#1a1a1a] px-3 py-1.5 text-xs text-[#a1a1aa] hover:border-indigo-500 hover:text-white transition-colors disabled:opacity-50"
-                  >
-                    {offer.label}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => router.push(`/dashboard/templates?id=${characterId}`)}
-                  className="flex-shrink-0 rounded-full border border-dashed border-[#404040] bg-transparent px-3 py-1.5 text-xs text-[#71717a] hover:border-indigo-500 hover:text-white transition-colors"
-                >
-                  + Add template
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => router.push(`/dashboard/templates?id=${characterId}`)}
-                  className="rounded-full border border-dashed border-[#404040] bg-transparent px-3 py-1.5 text-xs text-[#71717a] hover:border-indigo-500 hover:text-white transition-colors"
-                >
-                  + Create offer templates
-                </button>
-                <span className="text-xs text-[#71717a]">
-                  Add quick-tap shortcuts for your products
-                </span>
-              </div>
-            )
-          ) : (
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none flex-nowrap">
-              {intentShortcuts.map(intent => (
-                <button key={intent}
-                  disabled={sending}
-                  onClick={() => {
-                    const newIntent = intentPrefix === intent ? '' : intent
-                    setIntentPrefix(newIntent)
-                    const newInput = buildInput(newIntent, platformPrefix)
-                    setInput(newInput)
-                    setTimeout(() => {
-                      const ta = textareaRef.current
-                      if (ta) {
-                        ta.focus()
-                        const len = ta.value.length
-                        ta.setSelectionRange(len, len)
-                      }
-                    }, 0)
-                  }}
-                  className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${sending ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''} ${
-                    intentPrefix === intent
-                      ? 'bg-zinc-600 text-white border-zinc-500'
-                      : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'
-                  }`}>
-                  {intent}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none flex-nowrap">
+            {intentShortcuts.map(intent => (
+              <button key={intent}
+                disabled={sending}
+                onClick={() => {
+                  const newIntent = intentPrefix === intent ? '' : intent
+                  setIntentPrefix(newIntent)
+                  const newInput = buildInput(newIntent, platformPrefix)
+                  setInput(newInput)
+                  setTimeout(() => {
+                    const ta = textareaRef.current
+                    if (ta) {
+                      ta.focus()
+                      const len = ta.value.length
+                      ta.setSelectionRange(len, len)
+                    }
+                  }, 0)
+                }}
+                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${sending ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''} ${
+                  intentPrefix === intent
+                    ? 'bg-zinc-600 text-white border-zinc-500'
+                    : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 hover:text-white'
+                }`}>
+                {intent}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -1792,42 +1705,20 @@ export default function ChatClient() {
       <div>
         <div className="mx-auto w-full max-w-5xl px-4 py-2 sm:px-6">
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none flex-nowrap">
-            {character.character_type === 'reseller' ? (
-              [
-                { id: 'instagram', label: 'Instagram'       },
-                { id: 'story',     label: 'WhatsApp Status' },
-                { id: 'carousel',  label: 'Facebook'        },
-                { id: 'story',     label: 'Story'           },
-              ].map(p => (
-                <button
-                  key={p.label}
-                  onClick={() => selectPlatform(p.id)}
-                  disabled={sending}
-                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${sending ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''} ${
-                    activePlatform === p.id
-                      ? `${PLATFORM_SHORTCUT[p.id]} bg-zinc-800`
-                      : PLATFORM_SHORTCUT[p.id]
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))
-            ) : (
-              PLATFORMS.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => selectPlatform(p.id)}
-                  disabled={sending}
-                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${sending ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''} ${
-                    activePlatform === p.id
-                      ? `${PLATFORM_SHORTCUT[p.id]} bg-zinc-800`
-                      : PLATFORM_SHORTCUT[p.id]
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))
-            )}
+            {PLATFORMS.map(p => (
+              <button
+                key={p.id}
+                onClick={() => selectPlatform(p.id)}
+                disabled={sending}
+                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${sending ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''} ${
+                  activePlatform === p.id
+                    ? `${PLATFORM_SHORTCUT[p.id]} bg-zinc-800`
+                    : PLATFORM_SHORTCUT[p.id]
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -1882,82 +1773,13 @@ export default function ChatClient() {
 
               {showAttachmentPicker && (
                 <div className="absolute bottom-full left-0 mb-2 bg-[#1a1a1a] border border-[#262626] rounded-xl shadow-xl w-64 z-50 p-3">
-                  {character.character_type === 'reseller' ? (
-                    <>
-                      <p className="text-xs text-[#71717a] mb-3">What are you featuring?</p>
-                      <input
-                        type="text"
-                        placeholder="e.g. Red Silk Kurti"
-                        value={pickerProductName}
-                        onChange={e => setPickerProductName(e.target.value)}
-                        maxLength={30}
-                        className="w-full rounded-lg border border-[#262626] bg-[#0a0a0a] px-3 py-2 text-sm text-white placeholder:text-[#71717a] focus:border-indigo-500 focus:outline-none mt-1 mb-3"
-                      />
-                      <div className="flex flex-wrap gap-1.5">
-                        {['👗 Kurti', '💃 Saree', '👔 Shirt', '👗 Dress',
-                          '💍 Necklace', '💍 Ring', '📿 Earrings', '⌚ Watch',
-                          '👜 Bag', '👟 Shoes', '🕶️ Sunglasses', '📱 Phone'].map(chip => {
-                          const name = chip.replace(/^\S+\s/, '')
-                          return (
-                            <button
-                              key={chip}
-                              type="button"
-                              onClick={() => setPickerProductName(name)}
-                              className={`rounded-full border px-2 py-1 text-[10px] transition-colors cursor-pointer ${
-                                pickerProductName === name
-                                  ? 'border-indigo-500 text-indigo-400'
-                                  : 'border-[#404040] bg-[#141414] text-[#a1a1aa] hover:border-indigo-500 hover:text-white'
-                              }`}
-                            >
-                              {chip}
-                            </button>
-                          )
-                        })}
-                      </div>
-                      {savedProducts.length > 0 && (
-                        <>
-                          <hr className="border-[#262626] my-2" />
-                          <p className="text-xs text-[#71717a] mb-2">My products</p>
-                          <div className="grid grid-cols-3 gap-1.5">
-                            {savedProducts.map(product => (
-                              <button
-                                key={product.id}
-                                onClick={() => handleSelectProduct(product)}
-                                className="relative aspect-square rounded-lg overflow-hidden border border-[#262626] hover:border-indigo-500 transition-colors"
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={product.public_url ?? ''} alt={product.name} className="w-full h-full object-cover" />
-                                <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5">
-                                  <p className="text-[10px] text-white truncate">{product.name}</p>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        disabled={pickerProductName.trim() === ''}
-                        onClick={() => {
-                          setPendingProductName(pickerProductName.trim())
-                          attachmentFileInputRef.current?.click()
-                        }}
-                        className="w-full mt-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 text-sm text-white font-medium transition-colors"
-                      >
-                        Select Photo →
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-xs text-[#71717a] mb-2">Add reference</p>
-                      <button
-                        onClick={() => attachmentFileInputRef.current?.click()}
-                        className="w-full text-left text-sm text-[#a1a1aa] hover:text-white px-2 py-2 rounded-lg hover:bg-[#262626] flex items-center gap-2"
-                      >
-                        📷 Upload reference image
-                      </button>
-                    </>
-                  )}
+                  <p className="text-xs text-[#71717a] mb-2">Add reference</p>
+                  <button
+                    onClick={() => attachmentFileInputRef.current?.click()}
+                    className="w-full text-left text-sm text-[#a1a1aa] hover:text-white px-2 py-2 rounded-lg hover:bg-[#262626] flex items-center gap-2"
+                  >
+                    📷 Upload reference image
+                  </button>
                 </div>
               )}
             </div>
@@ -2056,7 +1878,6 @@ export default function ChatClient() {
                   {character.name}
                   {character.character_type === 'educator' && <span className="ml-2">🎓</span>}
                   {character.character_type === 'creator'  && <span className="ml-2">✨</span>}
-                  {character.character_type === 'reseller' && <span className="ml-2">🛍️</span>}
                 </h2>
                 <p className="text-sm text-[#a1a1aa] mt-0.5">{character.domain}</p>
               </div>

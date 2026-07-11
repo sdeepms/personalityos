@@ -13,7 +13,7 @@ type Character = {
 }
 
 type Attachment = {
-  type: 'product_image' | 'reference_image'
+  type: 'reference_image'
   public_url: string
   label: string
 }
@@ -182,12 +182,8 @@ Schema:
 }`
 
   // Append attachment context to system prompt
-  const productAttachment = attachments?.find(a => a.type === 'product_image')
-  const refAttachment     = attachments?.find(a => a.type === 'reference_image')
+  const refAttachment = attachments?.find(a => a.type === 'reference_image')
 
-  if (productAttachment) {
-    systemPrompt += `\n\nPRODUCT CONTEXT: The user is creating content for a product. Product image is attached.\nProduct: ${productAttachment.label}\nOnly use product details the user provides in their message.\nWrite a caption that describes this product engagingly, includes any price or details the user mentions, and ends with a clear call to action.`
-  }
   if (refAttachment) {
     systemPrompt += `\n\nSTYLE REFERENCE: The user has provided a reference image for mood/style inspiration.\nGenerate content that matches the mood and energy of the reference. Do not describe the reference image directly.`
   }
