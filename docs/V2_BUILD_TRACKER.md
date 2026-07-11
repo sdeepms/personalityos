@@ -11,7 +11,7 @@
 
 | Week | Phase | Days | Status | Completed |
 | :--- | :--- | :--- | :--- | :---: |
-| **Week 1** | Foundation | Day 1 – Day 5 | **In Progress** | 40% (2/5) |
+| **Week 1** | Foundation | Day 1 – Day 5 | **In Progress** | **60% (3/5)** |
 | **Week 2** | Agent Pipeline | Day 6 – Day 10 | *Scheduled* | 0% (0/5) |
 | **Week 3** | Post-Production & Creator Setup | Day 11 – Day 15 | *Scheduled* | 0% (0/5) |
 | **Week 4** | Pro + Ultra + QA & Polish | Day 16 – Day 24 | *Scheduled* | 0% (0/5) |
@@ -26,7 +26,7 @@
 | :---: | :--- | :---: | :---: | :--- |
 | **Day 1** | Database Migrations (`video_jobs`, `creator_dna` tables + `characters` modifications) | **Completed** | July 11, 2026 | SQL migration script executed successfully in Supabase. |
 | **Day 2** | Cloudflare Queue setup (`personalityos-video-queue` bindings) + background Video Consumer Worker skeleton | **Completed** | July 11, 2026 | Worker folder, configurations (`wrangler.toml`, `tsconfig.json`, `package.json`), and TS index handler created. Typechecks pass successfully. |
-| **Day 3** | Razorpay Integration (setting up subscription tiers) | *Scheduled* | — | Integration of webhook endpoints and status checks for Standard, Pro, and Ultra tiers. |
+| **Day 3** | Razorpay Integration (setting up subscription tiers) | **Completed** | July 11, 2026 | Razorpay subscription upgrade route and webhook verification endpoints implemented, signature verified via Web Crypto API, and deployed. |
 | **Day 4** | Sarvam AI TTS Adapter | *Scheduled* | — | Creating the adapter for the Bulbul V3 model supporting Hindi and English speech generation. |
 | **Day 5** | fal.ai LatentSync Adapter | *Scheduled* | — | Building and testing the lip synchronization model integration via fal.ai. |
 
