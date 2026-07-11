@@ -6,6 +6,8 @@ import { characters } from './routes/characters'
 import { chat } from './routes/chat'
 import { generate } from './routes/generate'
 import { library } from './routes/library'
+import { subscription } from './routes/subscription'
+import { webhooks } from './routes/webhooks'
 
 export type Env = {
   // Secrets — set via `wrangler secret put` in production, `.dev.vars` locally
@@ -19,6 +21,13 @@ export type Env = {
   R2_ACCESS_KEY_ID: string
   R2_SECRET_ACCESS_KEY: string
   R2_ACCOUNT_ID: string
+  // Razorpay keys
+  RAZORPAY_KEY_ID: string
+  RAZORPAY_KEY_SECRET: string
+  RAZORPAY_WEBHOOK_SECRET: string
+  RAZORPAY_PLAN_STANDARD?: string
+  RAZORPAY_PLAN_PRO?: string
+  RAZORPAY_PLAN_ULTRA?: string
   // Vars — set in wrangler.toml [vars]
   LLM_PROVIDER: string
   ALLOWED_ORIGIN: string
@@ -109,6 +118,9 @@ app.post('/api/feedback/request-more', async (c) => {
   })
 })
 
+// Public webhooks (bypasses Supabase JWT auth, validated via Razorpay signature)
+app.route('/webhooks', webhooks)
+
 // All /api/* routes require a valid Supabase JWT
 app.use('/api/*', authMiddleware)
 
@@ -155,5 +167,6 @@ app.route('/api/chat', chat)
 app.route('/api/generate', generate)
 app.route('/api/generations', generate)
 app.route('/api/library', library)
+app.route('/api/subscription', subscription)
 
 export default app
