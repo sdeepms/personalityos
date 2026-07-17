@@ -28,6 +28,10 @@ export type Env = {
   RAZORPAY_PLAN_STANDARD?: string
   RAZORPAY_PLAN_PRO?: string
   RAZORPAY_PLAN_ULTRA?: string
+  // Video provider keys
+
+  SUBMAGIC_API_KEY?: string
+  CREATOMATE_API_KEY?: string
   // Vars — set in wrangler.toml [vars]
   LLM_PROVIDER: string
   ALLOWED_ORIGIN: string
@@ -162,11 +166,15 @@ app.post('/api/upload/attachment', async (c) => {
   })
 })
 
+import { videoJobs } from './routes/video-jobs'
+
 app.route('/api/characters', characters)
 app.route('/api/chat', chat)
 app.route('/api/generate', generate)
 app.route('/api/generations', generate)
 app.route('/api/library', library)
 app.route('/api/subscription', subscription)
+app.route('/api/video-jobs', videoJobs)
 
 export default app
+
